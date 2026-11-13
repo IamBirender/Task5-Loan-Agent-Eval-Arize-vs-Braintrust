@@ -1,0 +1,12 @@
+# Keys
+.env
+# Python
+.venv/
+__pycache__/
+# Fannie Mae files: their terms do not allow re-sharing. Step 1 downloads them.
+data/loans.duckdb
+data/kb_passages.json
+# The AWS repo is cloned by step 1 at a pinned commit
+vendor/
+# Free wiring-test output
+results/dryrun*/
