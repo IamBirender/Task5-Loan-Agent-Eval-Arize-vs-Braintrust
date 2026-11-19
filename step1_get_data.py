@@ -9,7 +9,6 @@ Fannie Mae's terms do not allow us to re-share their files, so each person downl
 (no login needed) and saves them in the data/ folder with the names below.
 Usage:  python step1_get_data.py
 """
-import subprocess
 import sys
 from pathlib import Path
 
@@ -23,9 +22,6 @@ FILES = {  # file name to save in data/  ->  where to download it
     "FNMA_SF_Loan_Performance_Stat_Summary_Primary.pdf": PAGE + "/media/document/pdf/FNMA_SF_Loan_Performance_Stat_Summary_Primary.pdf",
     "loan-performance-data-tutorial.pdf": PAGE + "/media/9066/display",
 }
-# The AWS sample whose agents we test. Pinned so everyone tests the same code.
-REPO_URL = "https://github.com/aws-samples/sample-ma-due-diligence-agentcore"
-REPO_COMMIT = "3d6191a9c3ac6eae2b31b66dd4f72e11077ee8a2"
 VENDOR = Path(__file__).resolve().parent / "vendor" / "sample-ma-due-diligence-agentcore"
 
 data.DATA.mkdir(exist_ok=True)
@@ -49,16 +45,12 @@ elif not (data.DB_FILE.exists() and data.KB_FILE.exists()):
 else:
     print("ok       using the prepared data files data/loans.duckdb and data/kb_passages.json")
 
-# The code imports the repo's SQL safety check and citation checker from vendor/. A copy is included in the shared zip;
-# if it is missing, it is downloaded from GitHub (needs git and internet).
-if not VENDOR.exists():
-    subprocess.run(["git", "clone", "--quiet", REPO_URL, str(VENDOR)], check=True)
-if (VENDOR / ".git").exists():
-    subprocess.run(["git", "-C", str(VENDOR), "checkout", "--quiet", REPO_COMMIT], check=True)
-    print(f"ok       vendor/sample-ma-due-diligence-agentcore @ {REPO_COMMIT[:7]} (from GitHub)")
+# SQL safety and citation check live in this repo (loan_agents/sql_safety.py and lambda/citation_check).
+# The AWS sample clone is optional reference only.
+if VENDOR.exists():
+    print(f"ok       optional vendor/sample-ma-due-diligence-agentcore present")
 else:
-    assert (VENDOR / "src" / "mna" / "tools" / "text_to_sql.py").exists(), "vendor/ is incomplete - delete it and run this step again"
-    print(f"ok       vendor/sample-ma-due-diligence-agentcore (included copy of commit {REPO_COMMIT[:7]})")
+    print("ok       vendor/ not required (SQL safety and citation check are local)")
 
 con = data.connect()
 loans, rows = con.execute("SELECT count(DISTINCT loan_identifier), count(*) FROM loan_monthly").fetchone()

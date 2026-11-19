@@ -1,19 +1,18 @@
-"""STEP 3 - Run the 60 test cases through the loan agents ONCE and save every answer and tool call.
+"""STEP 3 - Invoke the AgentCore specialists / Strands supervisor once per case.
 
-Both platforms (step 4 Arize AX, step 5 Braintrust) then grade these same saved answers, so any difference in
-results comes from the platform, not from the agent answering differently.
-The model is chosen in .env with MODEL_PROVIDER: ollama (local test), anthropic (final run), dryrun (free wiring test).
+This writes an invoke log (case id, error, session id, trace ids). Arize and
+Braintrust score the traces those agents emit; this JSONL is not the grading source.
 
-Usage:  python step3_run_agents.py                 # all 60 cases (cases already finished are skipped)
-        python step3_run_agents.py --limit 3        # quick smoke test
+Usage:  python step3_run_agents.py
+        python step3_run_agents.py --limit 3
         python step3_run_agents.py --ids AV-G1-001 AV-G4-002
-        python step3_run_agents.py --fresh          # start again from zero
-Output: results/<provider>/agent_runs.jsonl  (one line per case; a re-run case gets a newer line)
+        python step3_run_agents.py --fresh
+Output: results/<provider>-<version>/agent_runs.jsonl
 """
 import argparse
 import json
 
-from loan_agents import data, models, runner
+from loan_agents import data, models, runner, telemetry
 from scoring import cases, runs
 
 ap = argparse.ArgumentParser()
@@ -22,6 +21,7 @@ ap.add_argument("--limit", type=int)
 ap.add_argument("--fresh", action="store_true", help="delete earlier results and run everything again")
 args = ap.parse_args()
 
+telemetry.setup_tracing()
 out = runs.runs_file()
 if args.fresh:
     out.unlink(missing_ok=True)
@@ -31,8 +31,26 @@ print(f"model: {models.PROVIDER} / {models.agent_model_name()}   cases to run: {
 
 for n, case in enumerate(todo, 1):
     rec = runner.run_case(case)
+    log = {
+        "id": rec["id"],
+        "agent": rec["agent"],
+        "model": rec["model"],
+        "provider": rec["provider"],
+        "seconds": rec["seconds"],
+        "error": rec["error"],
+        "session_id": rec.get("session_id"),
+        "arize_trace_id": rec.get("arize_trace_id"),
+        "braintrust_trace_id": rec.get("braintrust_trace_id"),
+        "tokens": rec.get("tokens"),
+        "input_tokens": rec.get("input_tokens"),
+        "output_tokens": rec.get("output_tokens"),
+        "est_cost_usd": rec.get("est_cost_usd"),
+        "tables_intact": rec.get("tables_intact"),
+        "tool_calls": rec.get("tool_calls"),
+        "answer": rec.get("answer"),
+    }
     with out.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, default=str) + "\n")
+        f.write(json.dumps(log, default=str) + "\n")
     print(f"[{n}/{len(todo)}] {case['id']:10} {rec['seconds']:6.1f}s  tools={[c['tool'] for c in rec['tool_calls']]}"
           + (f"  ERROR {rec['error'][:150]}" if rec["error"] else ""), flush=True)
 print(f"-> {out.relative_to(data.HERE)}")

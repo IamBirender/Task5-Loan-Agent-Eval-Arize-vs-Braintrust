@@ -26,7 +26,7 @@ names = list(platforms)
 L = [f"# Results - agent model `{models.agent_model_name()}`, judge `{models.JUDGE_MODEL}`", "",
      f"Cases answered: {sum(1 for c in all_cases if c['id'] in saved)} of {len(all_cases)} "
      f"({sum(1 for c in all_cases if c['source'] != 'added by us')} from the senior's spreadsheet, "
-     f"{sum(1 for c in all_cases if c['source'] == 'added by us')} added by us for G9-G19). "
+     f"{sum(1 for c in all_cases if c['source'] == 'added by us')} added by us for G9-G20). "
      f"Agent errors: {sum(1 for r in saved.values() if r['error'])}.", "",
      "## Quality gates", "", "| Gate | " + " | ".join(f"{n} (pass/fail/review) | {n} gate" for n in names) + " |",
      "|---|" + "---|---|" * len(names)]

@@ -3,6 +3,11 @@
 # Python
 .venv/
 __pycache__/
+*.pyc
+.pytest_cache/
+infra/cdk.out/
+cdk.out/
+lambda/_vendor/
 # Fannie Mae files: their terms do not allow re-sharing. Step 1 downloads them.
 data/loans.duckdb
 data/kb_passages.json

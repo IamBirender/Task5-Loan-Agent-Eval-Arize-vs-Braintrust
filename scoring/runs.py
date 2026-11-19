@@ -57,6 +57,6 @@ def gate_table(graded: dict, all_cases: list[dict]) -> list[dict]:
         else:
             verdict = "REVIEW" if any(r["gate_verdict"] == "REVIEW" for r in before) else "PASS"
         at = next((i for i, r in enumerate(rows) if int(r["gate"].split()[0][1:]) > 20), len(rows))
-        rows.insert(at, {"gate": "G20 · Readiness gate (derived from G1-G19)", "cases": 0, "graded": 0, "pass": 0, "fail": 0,
+        rows.insert(at, {"gate": "G20 rollup · derived from G1–G19", "cases": 0, "graded": 0, "pass": 0, "fail": 0,
                          "review": 0, "gate_verdict": verdict})
     return rows
