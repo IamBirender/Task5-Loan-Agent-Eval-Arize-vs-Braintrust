@@ -46,7 +46,6 @@ Task5 - Agentic Eval Arize vs Braintrust/
   data/loans.duckdb  data/kb_passages.json   <- prepared data
   check_models.py  step1_get_data.py ... step6_build_results.py   <- run in this order
   loan_agents/  scoring/       <- the agents, tools and scorers
-  vendor/                      <- copy of the AWS sample repo (imported by the code)
   results/                     <- our results (first and second sandbox run)
   report/                      <- report.pdf, slide deck, screenshots
   requirements.txt  .env.example
@@ -103,7 +102,7 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | # | Command | What it does | Time |
 |---|---|---|---|
 | 0 | `python check_models.py` | Sends "OK" to Claude (agents) and Amazon Nova Pro (judge). Must print **"Both models answered"** | 10 s |
-| 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**) and downloads the AWS sample repo at a fixed version | 10 s |
+| 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**). Does not clone the AWS sample repo | 10 s |
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data | 5 s |
 | 3 | `python step3_run_agents.py` | Invokes the Strands supervisor and four AgentCore specialists; writes an invoke log | 20–25 min |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
@@ -190,7 +189,6 @@ The safety gate G4 allows **no** failure. The 0.8 mark and the safety rule come 
 | `check_models.py` fails on Bedrock | A model is not enabled in that account. Set another one in `.env`, e.g. `BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0` or `JUDGE_MODEL=us.amazon.nova-lite-v1:0` |
 | `check_models.py` fails on Anthropic | Check `ANTHROPIC_API_KEY`, and that the models `claude-opus-5-5` / `claude-sonnet-5-5` are available to your account (or set `CLAUDE_MODEL` / `JUDGE_MODEL`) |
 | Step 1 says "No data found" | `data/loans.duckdb` and `data/kb_passages.json` are missing from the `data/` folder |
-| Step 1 fails at "git clone" | The machine cannot reach github.com; check the internet connection |
 | Step 4 or 5 fails on keys | Check the Arize Space ID / API key and the Braintrust key in `.env` (no spaces around `=`) |
 | Step 3 skips every case | They are already done; use `python step3_run_agents.py --fresh` to start again |
 | Rate-limit errors (429) | Wait a minute and run the same step again; finished work is kept |
@@ -209,10 +207,9 @@ results/      our results: bedrock-v1/ (first run), bedrock-v2/ (second run), be
 report/       report.pdf, the slide deck, 22 screenshots, build_deck.js (rebuilds the slides)
 ```
 
-The 5 agents follow the AWS sample's design: one Supervisor (manager) that calls 4 expert agents as tools. Taken from the repo unchanged:
-the agent framework (Strands Agents), the SQL safety check `validate_sql` and the citation checker `check_citations`.
-The repo's AWS-only parts (database, document search, memory, Bedrock Guardrail) are replaced by local stand-ins; the
-Guardrail's rules are written into the Supervisor's instructions.
+The 5 agents follow the AWS sample's design: a Strands Supervisor that invokes 4 AgentCore specialists.
+SQL safety (`loan_agents/sql_safety.py`) and the citation checker (`lambda/citation_check`) live in this repo.
+The eval does not import or clone `sample-ma-due-diligence-agentcore`. DuckDB is only for step 1, step 2, and seeding.
 
 ## Our results (13 November 2026)
 

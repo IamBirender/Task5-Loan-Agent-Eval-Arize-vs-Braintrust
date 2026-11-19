@@ -1,16 +1,16 @@
-"""STEP 1 - Data preparation (run on YOUR OWN computer) + get the AWS sample repo.
+"""STEP 1 - Data preparation (run on YOUR OWN computer).
 
   On your computer: checks the 5 Fannie Mae files, cleans the data (108 -> 61 columns) and builds
                     data/loans.duckdb and data/kb_passages.json (the prepared data).
-  Anywhere else (for example the AWS sandbox): upload only those 2 prepared files into data/; this step then just
-                    checks them and gets the AWS repo. The raw Fannie Mae files never need to leave your computer.
+  Anywhere else (for example an EC2 eval box): upload only those 2 prepared files into data/; this step then just
+                    checks them. The raw Fannie Mae files never need to leave your computer.
+  This step does not clone the AWS sample repo. SQL safety and citation check live in this repo.
 
 Fannie Mae's terms do not allow us to re-share their files, so each person downloads them in a web browser
 (no login needed) and saves them in the data/ folder with the names below.
 Usage:  python step1_get_data.py
 """
 import sys
-from pathlib import Path
 
 from loan_agents import data
 
@@ -22,8 +22,6 @@ FILES = {  # file name to save in data/  ->  where to download it
     "FNMA_SF_Loan_Performance_Stat_Summary_Primary.pdf": PAGE + "/media/document/pdf/FNMA_SF_Loan_Performance_Stat_Summary_Primary.pdf",
     "loan-performance-data-tutorial.pdf": PAGE + "/media/9066/display",
 }
-VENDOR = Path(__file__).resolve().parent / "vendor" / "sample-ma-due-diligence-agentcore"
-
 data.DATA.mkdir(exist_ok=True)
 raw_present = data.SAMPLE_CSV.exists()
 if raw_present:   # ---- data preparation (local) ----
@@ -44,13 +42,6 @@ elif not (data.DB_FILE.exists() and data.KB_FILE.exists()):
     sys.exit(1)
 else:
     print("ok       using the prepared data files data/loans.duckdb and data/kb_passages.json")
-
-# SQL safety and citation check live in this repo (loan_agents/sql_safety.py and lambda/citation_check).
-# The AWS sample clone is optional reference only.
-if VENDOR.exists():
-    print(f"ok       optional vendor/sample-ma-due-diligence-agentcore present")
-else:
-    print("ok       vendor/ not required (SQL safety and citation check are local)")
 
 con = data.connect()
 loans, rows = con.execute("SELECT count(DISTINCT loan_identifier), count(*) FROM loan_monthly").fetchone()
