@@ -22,7 +22,7 @@
 # Why cleanup remains best-effort
 #   A handful of resources are created imperatively via Custom Resources
 #   and *should* delete cleanly, but CloudFormation cannot guarantee the
-#   deletion of everything (orphaned ECR images, KB ingestion artifacts,
+#   deletion of everything (orphaned S3 zips, KB ingestion artifacts,
 #   Memory records). The verify_cleanup script helps the reader confirm
 #   a zero-cost end state (Requirement 8.4, 8.5).
 #
@@ -74,7 +74,7 @@ if [ "$FORCE" -eq 0 ]; then
 ================================================================================
 
 This will permanently destroy all CDK stacks created by this sample:
-  - LoanAgentStack       (AgentCore Runtime, Memory, Guardrail, Amazon ECR, AWS CodeBuild)
+  - LoanAgentStack       (AgentCore Runtime, Memory, Guardrail, S3 code zip)
   - LoanGatewayStack     (AgentCore Gateway + market-data Lambda)
   - LoanEvaluatorStack   (citation-check Lambda)
   - LoanDataStack        (Aurora Serverless v2, DynamoDB, S3, Bedrock KB)
@@ -143,7 +143,7 @@ Run the following to double-check that no billable resources remain
   # S3 buckets created by the sample:
   aws s3 ls --region $REGION | grep -i 'loan-'
 
-  # ECR repositories:
+  # Leftover ECR repos from an older container deploy (should be empty):
   aws ecr describe-repositories --region $REGION \\
     --query "repositories[?contains(repositoryName, 'loan')].repositoryName" \\
     --output text
@@ -165,7 +165,7 @@ Run the following to double-check that no billable resources remain
     --output text
 
 If any of the above returns a non-empty result, open the AWS console
-for that service and delete the listed resources. Orphaned ECR images
-and KB data sources occasionally survive a CDK destroy when a previous
-deploy exited mid-run.
+for that service and delete the listed resources. Orphaned KB data
+sources occasionally survive a CDK destroy when a previous deploy
+exited mid-run.
 EOF

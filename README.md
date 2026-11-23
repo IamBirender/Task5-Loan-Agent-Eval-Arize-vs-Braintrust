@@ -1,23 +1,26 @@
 # Loan agent test run: Arize AX and Braintrust
 
-This folder runs **132 test cases** against a loan-diligence team modeled on
+This folder runs **332 test cases** against a loan-diligence team modeled on
 [sample-ma-due-diligence-agentcore](https://github.com/aws-samples/sample-ma-due-diligence-agentcore):
 the senior's 60 cases in `agentic_evaluation_test_cases.xlsx` (gates G1–G8, G21–G22) plus 72 cases in
-`extra_test_cases_G9_G20.json` (six per gate G9–G20). `gate_table` still adds a distinct summary row,
+`extra_test_cases_G9_G20.json` (six per gate G9–G20) plus 200 cases in
+`extra_test_cases_G21_G22.json` (100 per gate G21–G22). Existing AV-G21-001–006 and AV-G22-001–006
+stay in the spreadsheet. `gate_table` still adds a distinct summary row,
 `G20 rollup · derived from G1–G19`.
 
-Four **AgentCore Runtime** specialists (Pool Screening, Credit Performance, Cohort Comparison,
-Compliance Validation) run in AWS. The **Supervisor** is a Strands agent in the eval process; its
-tools call `InvokeAgentRuntime` and pass `traceparent`. Tools use Aurora (RDS Data API), a Bedrock
-Knowledge Base, AgentCore Memory (`credit_events`), a Bedrock Guardrail, and an AgentCore Gateway
-citation check (Cedar default-deny). Agents never open DuckDB.
+Four **AgentCore** specialists (Pool Screening, Credit Performance, Cohort Comparison, Compliance
+Validation) plus a **Strands supervisor**. The supervisor always runs in the eval process on EC2.
+By default (`LOAN_AGENTCORE_INVOKE=local`) the specialists run as AgentCore apps **on that same
+instance** (no ECR, no hosted Runtime). After `LoanAgentStack` is deployed you can set
+`LOAN_AGENTCORE_INVOKE=runtime` so the supervisor `InvokeAgentRuntime`s hosted runtimes instead.
+Tools use Aurora / Bedrock KB / Memory / Gateway when those ARNs exist; otherwise DuckDB on the box.
 
 Arize AX and Braintrust score the **traces those AWS agents emit** (dual OTLP). Steps 4 and 5 do not
 re-run agents or grade a local JSONL of answers. `MODEL_PROVIDER=agentcore` is the documented path.
 `MODEL_PROVIDER=dryrun` checks that both platforms accept a trace export. `MODEL_PROVIDER=local` is
 offline DuckDB debugging and does not feed the comparison.
 
-Launching an EC2 instance does **not** turn the other AWS services on. Follow [docs/ec2-setup.md](docs/ec2-setup.md).
+Launching an EC2 instance does **not** turn the other AWS services on. Create them yourself from the console using [docs/aws-services.md](docs/aws-services.md) (what each service is, click-path, names, `.env` / SSM keys). Ordered EC2 runbook: [docs/ec2-setup.md](docs/ec2-setup.md).
 
 **Earlier local-stand-in runs** (73 cases, DuckDB, no AgentCore deploy) from 13 November 2026 remain
 under `results/bedrock-v3/` and `report/`.
@@ -35,6 +38,7 @@ Our own results, the report and the slides are in `report/` (see [Our results](#
 | Arize AX account | app.arize.com → Space settings → API keys: copy the **Space ID** and an **API key** |
 | Braintrust account | braintrust.dev → Settings → API keys → **+ API key** (copy it, it is shown only once) |
 | An AI model, either **Way 1** or **Way 2** | **Way 1 (free, what we used):** an AWS Builder Center sandbox, with Claude on Amazon Bedrock. **Way 2 (paid):** your own Anthropic API key from console.anthropic.com |
+| AWS account (EC2 eval) | Console steps for every service: [docs/aws-services.md](docs/aws-services.md) |
 
 The folder should look like this before you start:
 
@@ -43,6 +47,7 @@ Task5 - Agentic Eval Arize vs Braintrust/
   README.md                    <- these instructions
   agentic_evaluation_test_cases.xlsx   <- the senior's 60 test cases
   extra_test_cases_G9_G20.json         <- our 72 cases for gates G9-G20
+  extra_test_cases_G21_G22.json        <- our 200 cases for gates G21-G22 (100 each)
   data/loans.duckdb  data/kb_passages.json   <- prepared data
   check_models.py  step1_get_data.py ... step6_build_results.py   <- run in this order
   loan_agents/  scoring/       <- the agents, tools and scorers
@@ -104,7 +109,7 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 0 | `python check_models.py` | Sends "OK" to Claude (agents) and Amazon Nova Pro (judge). Must print **"Both models answered"** | 10 s |
 | 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**). Does not clone the AWS sample repo | 10 s |
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data | 5 s |
-| 3 | `python step3_run_agents.py` | Invokes the Strands supervisor and four AgentCore specialists; writes an invoke log | 20–25 min |
+| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log | 20–25 min |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
 | 5 | `python step5_score_braintrust.py` | The same in Braintrust | 4 min |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
@@ -199,8 +204,9 @@ The safety gate G4 allows **no** failure. The 0.8 mark and the safety rule come 
 check_models.py, step1_get_data.py ... step6_build_results.py   run in this order
 loan_agents/  runtime.py (AgentCore specialist), agents.py (Strands supervisor), tools.py (Aurora/KB/Memory/Gateway),
               models.py, runner.py, client.py, aws_*.py
-infra/        CDK Network → Data → Evaluator → Gateway → Agent (four runtimes)
-docs/ec2-setup.md   EC2 does not enable the other AWS services; this is the step-by-step guide
+infra/        CDK Network → Data → Evaluator → Gateway → Agent (four runtimes, S3 zip, no ECR)
+docs/aws-services.md   Console guide for every AWS service this eval uses
+docs/ec2-setup.md      Ordered EC2 runbook (instance, .env, optional CDK)
 scoring/      cases.py (reads the spreadsheet), checks.py (the 4 scorers), runs.py (saved answers + grading)
 data/         the 2 prepared data files (not in git)
 results/      our results: bedrock-v1/ (first run), bedrock-v2/ (second run), bedrock-v3/ (final run with G9-G20), groq-v2/ (small free trial). Each run writes to results/<provider>-<AGENT_VERSION>/, so old results are never mixed in

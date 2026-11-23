@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 infra/cdk.out/
 cdk.out/
+build/
 lambda/_vendor/
 # Fannie Mae files: their terms do not allow re-sharing. Step 1 downloads them.
 data/loans.duckdb

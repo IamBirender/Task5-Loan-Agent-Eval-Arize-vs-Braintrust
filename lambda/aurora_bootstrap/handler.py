@@ -79,8 +79,8 @@ from typing import Any
 # --------------------------------------------------------------------------- #
 # Shared CR base loader.
 #
-# Mirrors the pattern used by ``lambda/build_trigger/handler.py`` and
-# ``lambda/build_waiter/handler.py``. The ``lambda`` directory is not a
+# Mirrors the other Custom Resource handlers in ``lambda/``. The
+# ``lambda`` directory is not a
 # normal Python package because ``lambda`` is a keyword, so each CR
 # handler loads the shared ``_cr_common/send_response.py`` module by
 # explicit filesystem path. At runtime inside AWS Lambda the

@@ -1,5 +1,5 @@
 """Read the test cases: the senior's 60 cases (spreadsheet, column C holds each case as JSON) plus our own
-G9-G20 cases (extra_test_cases_G9_G20.json). Set ONLY_SENIOR_CASES=1 to use just the 60."""
+G9-G20 and G21-G22 extras. Set ONLY_SENIOR_CASES=1 to use just the 60."""
 import json
 import os
 from pathlib import Path
@@ -9,6 +9,8 @@ import openpyxl
 HERE = Path(__file__).resolve().parent.parent
 XLSX = HERE / "agentic_evaluation_test_cases.xlsx"
 EXTRA = HERE / "extra_test_cases_G9_G20.json"
+EXTRA_G21_G22 = HERE / "extra_test_cases_G21_G22.json"
+EXTRA_FILES = (EXTRA, EXTRA_G21_G22)
 
 
 def _case(j: dict, row, title: str, source: str) -> dict:
@@ -33,9 +35,12 @@ def load() -> list[dict]:
     for row_no, (gate, title, js, *_rest) in enumerate(ws.iter_rows(min_row=4, max_col=6, values_only=True), start=4):
         if js and str(js).lstrip().startswith("{"):
             cases.append(_case(json.loads(js), row_no, str(title).split("\n")[0], "senior's spreadsheet"))
-    if EXTRA.exists() and os.getenv("ONLY_SENIOR_CASES") != "1":
-        for j in json.loads(EXTRA.read_text(encoding="utf-8"))["testCases"]:
-            cases.append(_case(j, None, j["description"], "added by us"))
+    if os.getenv("ONLY_SENIOR_CASES") != "1":
+        for path in EXTRA_FILES:
+            if not path.exists():
+                continue
+            for j in json.loads(path.read_text(encoding="utf-8"))["testCases"]:
+                cases.append(_case(j, None, j["description"], "added by us"))
     gate_no = lambda c: int(c["gate_code"][1:])
     return sorted(cases, key=lambda c: (gate_no(c), c["id"]))
 

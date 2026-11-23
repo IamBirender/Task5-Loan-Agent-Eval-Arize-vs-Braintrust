@@ -1,8 +1,17 @@
-"""Invoke a specialist AgentCore Runtime from the eval process."""
+"""Invoke a specialist AgentCore agent from the eval process.
+
+The supervisor is a Strands agent in this process. Specialists stay AgentCore
+apps (``loan_agents.runtime`` / BedrockAgentCoreApp):
+
+- ``LOAN_AGENTCORE_INVOKE=local`` (default on EC2): run that AgentCore handler
+  in this process. No Runtime ARN, ECR, or zip deploy.
+- ``LOAN_AGENTCORE_INVOKE=runtime``: ``InvokeAgentRuntime`` against deployed
+  AgentCore Runtimes.
+"""
 from __future__ import annotations
 
 import json
-import uuid
+import os
 from typing import Any
 
 from . import aws_config, context, telemetry
@@ -10,7 +19,19 @@ from .aws_config import SPECIALISTS
 
 
 class ClientError(RuntimeError):
-    """Raised when InvokeAgentRuntime cannot complete."""
+    """Raised when a specialist AgentCore invoke cannot complete."""
+
+
+def invoke_mode(runtime_arn: str | None = None) -> str:
+    """Return ``local`` or ``runtime``. Explicit env wins; otherwise ARNs imply runtime."""
+    explicit = os.getenv("LOAN_AGENTCORE_INVOKE", "").strip().lower()
+    if explicit in {"local", "ec2", "process"}:
+        return "local"
+    if explicit in {"runtime", "aws", "agentcore"}:
+        return "runtime"
+    if runtime_arn:
+        return "runtime"
+    return "local"
 
 
 def _agentcore_client(region_name: str | None = None):
@@ -96,10 +117,6 @@ def invoke_specialist(
     if not isinstance(prompt, str) or not prompt.strip():
         raise ClientError("prompt must be a non-empty string")
     session = context.pad_session_id(session_id, payload.get("case_id") if payload else "")
-    cfg = aws_config.load_config()
-    arn = runtime_arn or cfg.runtime_arns.get(name)
-    if not arn:
-        raise ClientError(f"Runtime ARN for {name} is not configured")
     body = {
         "prompt": prompt,
         "session_id": session,
@@ -107,7 +124,53 @@ def invoke_specialist(
         "traceparent": traceparent or telemetry.current_traceparent(),
         **(payload or {}),
     }
-    client = agentcore_client or _agentcore_client(cfg.region)
+    cfg = aws_config.load_config()
+    arn = runtime_arn or cfg.runtime_arns.get(name)
+    mode = invoke_mode(arn)
+    if mode == "local":
+        return _invoke_local(name, session, body)
+    if not arn:
+        raise ClientError(
+            f"Runtime ARN for {name} is not configured. Set LOAN_AGENTCORE_INVOKE=local "
+            "to run the AgentCore specialist on this EC2, or deploy LoanAgentStack."
+        )
+    return _invoke_runtime(name, session, body, arn, cfg.region, agentcore_client)
+
+
+def _invoke_local(name: str, session: str, body: dict[str, Any]) -> dict[str, Any]:
+    # Imported lazily: runtime -> agents -> client.
+    from . import runtime
+
+    previous = os.environ.get("LOAN_AGENT_NAME")
+    os.environ["LOAN_AGENT_NAME"] = name
+    try:
+        parsed = runtime.handle_event(body)
+    except Exception as exc:
+        raise ClientError(f"AgentCore specialist {name} failed on this host: {exc}") from exc
+    finally:
+        if previous is None:
+            os.environ.pop("LOAN_AGENT_NAME", None)
+        else:
+            os.environ["LOAN_AGENT_NAME"] = previous
+    if not isinstance(parsed, dict):
+        parsed = {"answer": str(parsed)}
+    parsed.setdefault("session_id", session)
+    parsed.setdefault("agent", name)
+    parsed.setdefault("trace_id", parsed.get("trace_id") or "")
+    parsed.setdefault("answer", parsed.get("text") or "")
+    parsed.setdefault("tool_calls", parsed.get("tool_calls") or [])
+    return parsed
+
+
+def _invoke_runtime(
+    name: str,
+    session: str,
+    body: dict[str, Any],
+    arn: str,
+    region: str,
+    agentcore_client: Any | None,
+) -> dict[str, Any]:
+    client = agentcore_client or _agentcore_client(region)
     try:
         response = client.invoke_agent_runtime(
             agentRuntimeArn=arn,

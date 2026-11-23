@@ -79,7 +79,7 @@ _LAMBDA_TIMEOUT_SECONDS = 30
 #
 # Resolved from ``__file__`` rather than a CWD-relative string so the
 # asset path works regardless of where ``cdk`` is invoked. The other
-# stacks (``DataStack``, ``AgentStack``, ``BuildPipelineConstruct``)
+# stacks (``DataStack``, ``AgentStack``, ``AgentCodeConstruct``)
 # use the same ``parents[2]`` pattern; kept consistent here.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _LAMBDA_ASSET_DIR = str(_REPO_ROOT / "lambda" / "citation_check")

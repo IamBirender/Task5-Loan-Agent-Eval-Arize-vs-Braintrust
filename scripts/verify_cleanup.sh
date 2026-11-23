@@ -10,7 +10,7 @@
 #
 # Why this script is informational
 #   - A handful of sample resources are created imperatively via Custom
-#     Resources (ECR images, KB data sources, Memory records). CDK
+#     Resources (S3 zips, leftover ECR from older deploys, KB data sources, Memory records). CDK
 #     destroys them on teardown, but an interrupted earlier run can
 #     leave orphans.
 #   - AgentCore control-plane APIs are still evolving; some list calls
@@ -76,7 +76,7 @@ run_or_note "s3" aws s3api list-buckets \
   --query "Buckets[?starts_with(Name, 'loan-')].Name" \
   --output text
 
-print_section "ECR repositories matching 'loan'"
+print_section "Leftover ECR repositories matching 'loan' (older container deploys)"
 run_or_note "ecr" aws ecr describe-repositories \
   --region "$REGION" \
   --query "repositories[?contains(repositoryName, 'loan')].repositoryName" \

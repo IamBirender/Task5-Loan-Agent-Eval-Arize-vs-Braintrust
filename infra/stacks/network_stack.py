@@ -206,8 +206,8 @@ class NetworkStack(Stack):
         )
 
         # S3 gateway endpoint — attached to the route tables of both
-        # subnet groups so the documents bucket and the CodeBuild
-        # source bucket are reachable from Aurora (for pgvector data
+        # subnet groups so the documents bucket and CDK asset buckets
+        # are reachable from Aurora (for pgvector data
         # loads triggered by the KB) and from Lambdas (for reads/writes
         # during Custom Resource execution) without NAT egress cost.
         self.s3_gateway_endpoint = self.vpc.add_gateway_endpoint(

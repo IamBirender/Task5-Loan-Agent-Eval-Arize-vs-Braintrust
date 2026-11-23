@@ -9,7 +9,7 @@
 
     This script is informational
       - A handful of sample resources are created imperatively via
-        Custom Resources (ECR images, KB data sources, Memory records).
+        Custom Resources (S3 zips, leftover ECR from older deploys, KB data sources, Memory records).
         CDK destroys them on teardown, but an interrupted earlier run
         can leave orphans.
       - AgentCore control-plane APIs are still evolving; some list
@@ -90,7 +90,7 @@ Invoke-AwsListing -Label "s3" -Arguments @(
     "--output", "text"
 )
 
-Write-Section "ECR repositories matching 'loan'"
+Write-Section "Leftover ECR repositories matching 'loan' (older container deploys)"
 Invoke-AwsListing -Label "ecr" -Arguments @(
     "ecr", "describe-repositories",
     "--region", $Region,

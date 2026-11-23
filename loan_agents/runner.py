@@ -1,4 +1,4 @@
-"""Run one test case. Specialists invoke AgentCore; the supervisor is a local Strands agent."""
+"""Run one test case. Supervisor is Strands here; specialists are AgentCore apps."""
 from __future__ import annotations
 
 import time

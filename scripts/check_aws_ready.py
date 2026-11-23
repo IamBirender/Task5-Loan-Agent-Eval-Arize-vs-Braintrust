@@ -135,13 +135,17 @@ def main() -> int:
         report["identity"] = check_identity()
         report["models"] = check_bedrock_models()
         report["outbound"] = check_outbound()
-        try:
-            report["runtimes"] = check_runtime_arns()
-        except ReadyError as exc:
-            report["runtimes"] = str(exc)
-            print(json.dumps(report, indent=2))
-            print("Pre-deploy checks passed. Deploy the stack, seed, then rerun this script.")
-            return 0
+        invoke = os.getenv("LOAN_AGENTCORE_INVOKE", "local").strip().lower()
+        if invoke in {"local", "ec2", "process"}:
+            report["runtimes"] = "skipped (LOAN_AGENTCORE_INVOKE=local; specialists run on this host)"
+        else:
+            try:
+                report["runtimes"] = check_runtime_arns()
+            except ReadyError as exc:
+                report["runtimes"] = str(exc)
+                print(json.dumps(report, indent=2))
+                print("Pre-deploy checks passed. Deploy the stack, seed, then rerun this script.")
+                return 0
     except ReadyError as exc:
         print(f"NOT READY: {exc}")
         return 1

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import re
 
 from strands import Agent, tool
 
-from . import aws_citation, aws_kb, aws_memory, aws_sql, context, data, models
+from . import aws_citation, aws_config, aws_kb, aws_memory, aws_sql, context, data, models
 from .sql_safety import SYSTEM_PROMPT_TEMPLATE, TextToSqlError, normalise_generated_sql, validate_sql
 
 CALLS: list[dict] = []
@@ -23,9 +24,21 @@ _GATEWAY_OPENER = None
 
 
 def use_aws() -> bool:
-    import os
-
-    return bool(os.getenv("LOAN_AGENT_NAME")) or models.PROVIDER == "agentcore"
+    """Aurora/KB/Memory/Gateway when those ARNs exist; otherwise DuckDB on this host."""
+    flag = os.getenv("LOAN_USE_AWS", "").strip().lower()
+    if flag in {"0", "false", "no"}:
+        return False
+    if flag in {"1", "true", "yes"}:
+        return True
+    if os.getenv("LOAN_AURORA_CLUSTER_ARN") and os.getenv("LOAN_AURORA_SECRET_ARN"):
+        return True
+    if models.PROVIDER != "agentcore":
+        return False
+    try:
+        cfg = aws_config.load_config()
+    except Exception:
+        return False
+    return bool(cfg.aurora_cluster_arn and cfg.aurora_secret_arn)
 
 
 def current_fault() -> str | None:

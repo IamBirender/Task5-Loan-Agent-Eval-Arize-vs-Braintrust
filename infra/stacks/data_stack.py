@@ -479,8 +479,6 @@ class DataStack(Stack):
             code=lambda_.Code.from_asset(
                 str(_AURORA_BOOTSTRAP_LAMBDA_ROOT),
                 exclude=[
-                    "build_trigger/**",
-                    "build_waiter/**",
                     "citation_check/**",
                     "market_data/**",
                     "**/__pycache__/**",

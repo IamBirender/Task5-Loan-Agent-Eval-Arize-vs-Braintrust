@@ -1,4 +1,4 @@
-"""AgentStack - AgentCore Runtime, Memory, Guardrail, and build pipeline.
+"""AgentStack - AgentCore Runtime, Memory, Guardrail, and S3 code zip.
 
 This stack provisions:
 
@@ -6,16 +6,16 @@ This stack provisions:
   denial topic) via the native ``aws_bedrock.CfnGuardrail`` L1;
 * an AgentCore Memory resource via the stable
   ``aws_bedrockagentcore.Memory`` L2 construct with 30-day expiry;
-* an AgentCore Runtime resource via the stable
+* four AgentCore Runtime resources via the stable
   ``aws_bedrockagentcore.Runtime`` L2 construct with X-Ray tracing
-  enabled, pointing at the ECR image the build pipeline produces;
+  enabled, pointing at one S3 zip (direct-code deploy, no ECR);
 * the agent runtime IAM role scoped with least-privilege permissions
   per the design's *IAM Summary* table;
 * the SSM parameter ``/loan/runtime/arn`` that :mod:`loan_agents.aws_config` resolves.
 
 Design reference: ``.kiro/specs/ma-due-diligence-agentcore/design.md``
-sections *Infrastructure as Code Design - AgentStack*, *Container
-Build Pipeline*, and *Security Design - IAM Summary*.
+sections *Infrastructure as Code Design - AgentStack* and
+*Security Design - IAM Summary*.
 
 Requirements implemented by this stack:
 
@@ -54,7 +54,7 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
-from infra.constructs import BuildPipelineConstruct
+from infra.constructs import AgentCodeConstruct
 
 if TYPE_CHECKING:
     from infra.stacks.data_stack import DataStack
@@ -117,7 +117,7 @@ _INFERENCE_PROFILE_IDS: tuple[str, ...] = (
 
 
 class AgentStack(Stack):
-    """Container build pipeline + AgentCore Runtime, Memory, and Guardrail (L2 constructs)."""
+    """AgentCore Runtime (S3 zip), Memory, and Guardrail."""
 
     def __init__(
         self,
@@ -134,14 +134,6 @@ class AgentStack(Stack):
         self._data_stack = data_stack
         self._evaluator_stack = evaluator_stack
         self._gateway_stack = gateway_stack
-
-        # ------------------------------------------------------------------
-        # Container build pipeline
-        # ------------------------------------------------------------------
-        self.build_pipeline = BuildPipelineConstruct(self, "BuildPipeline")
-        self.ecr_repository = self.build_pipeline.ecr_repository
-        self.build_project = self.build_pipeline.build_project
-        self.image_uri = self.build_pipeline.image_uri
 
         # ------------------------------------------------------------------
         # Amazon Bedrock Guardrail (Req 4.1)
@@ -365,30 +357,7 @@ class AgentStack(Stack):
             ),
         )
 
-        # 10. ECR image pull (Req 1.4).
-        # Security exception: ``ecr:GetAuthorizationToken`` requires Resource="*".
-        self.agent_runtime_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="EcrTokenForImagePull",
-                effect=iam.Effect.ALLOW,
-                actions=["ecr:GetAuthorizationToken"],
-                resources=["*"],
-            ),
-        )
-        self.agent_runtime_role.add_to_policy(
-            iam.PolicyStatement(
-                sid="EcrPullAgentImage",
-                effect=iam.Effect.ALLOW,
-                actions=[
-                    "ecr:BatchCheckLayerAvailability",
-                    "ecr:BatchGetImage",
-                    "ecr:GetDownloadUrlForLayer",
-                ],
-                resources=[self.ecr_repository.repository_arn],
-            ),
-        )
-
-        # 11. SSM parameter read (for dynamic config lookup).
+        # 10. SSM parameter read (for dynamic config lookup).
         self.agent_runtime_role.add_to_policy(
             iam.PolicyStatement(
                 sid="SsmReadLoanParameters",
@@ -427,7 +396,16 @@ class AgentStack(Stack):
         self.observability_secret.grant_read(self.agent_runtime_role)
 
         # ------------------------------------------------------------------
-        # AgentCore Runtimes — one per specialist (shared image, LOAN_AGENT_NAME)
+        # Direct-code zip (shared by the four runtimes)
+        # ------------------------------------------------------------------
+        self.agent_code = AgentCodeConstruct(
+            self,
+            "AgentCode",
+            runtime_role=self.agent_runtime_role,
+        )
+
+        # ------------------------------------------------------------------
+        # AgentCore Runtimes — one per specialist (shared zip, LOAN_AGENT_NAME)
         # ------------------------------------------------------------------
         runtime_env_vars: dict[str, str] = {
             "LOAN_GUARDRAIL_ID": self.guardrail_id,
@@ -467,14 +445,12 @@ class AgentStack(Stack):
                 f"AgentRuntime{specialist.title().replace('_', '')}",
                 runtime_name=runtime_name,
                 description=f"Loan {specialist.replace('_', ' ')} specialist AgentCore Runtime.",
-                agent_runtime_artifact=bac.AgentRuntimeArtifact.from_ecr_repository(
-                    self.ecr_repository,
-                ),
+                agent_runtime_artifact=self.agent_code.artifact(),
                 execution_role=self.agent_runtime_role,
                 environment_variables=env,
                 tracing_enabled=True,
             )
-            runtime.node.add_dependency(self.build_pipeline.build_waiter)
+            runtime.node.add_dependency(self.agent_code.asset)
             self.runtimes[specialist] = runtime
             self.runtime_arns[specialist] = runtime.agent_runtime_arn
             param = ssm.StringParameter(

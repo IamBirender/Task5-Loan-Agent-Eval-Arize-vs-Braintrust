@@ -1,8 +1,12 @@
-# EC2 and AWS service setup
+# EC2 runbook
+
+For a **service-by-service console guide** (what to click, names, IAM, `.env` keys), use [aws-services.md](aws-services.md). This page is the ordered path on the instance.
 
 An EC2 instance in the same account is only a Linux machine with whatever IAM role you attach. It does not enable Bedrock models, create AgentCore runtimes, or provision Aurora, the Knowledge Base, Memory, Guardrails, or the Gateway. Those are separate services. The instance role lets the box call them after they exist. Arize and Braintrust are outside AWS, so the instance also needs outbound HTTPS to `otlp.arize.com` and `api.braintrust.dev`.
 
-The specialists run on AgentCore, not on the EC2 CPU. The EC2 box is where the Strands supervisor, the eval steps, and `cdk deploy` run.
+The **supervisor is a Strands agent in the eval process on this EC2**. The **four specialists are AgentCore apps** (`loan_agents/runtime.py`). By default (`LOAN_AGENTCORE_INVOKE=local`) those AgentCore handlers run on this instance — no ECR, no Runtime ARN, no zip deploy. Set `LOAN_AGENTCORE_INVOKE=runtime` only after `LoanAgentStack` is up if you want `InvokeAgentRuntime` against hosted AgentCore Runtimes.
+
+Aurora, the Knowledge Base, Memory, Guardrails, and the Gateway are still separate services. They are optional for a local-data eval (DuckDB + files on the box). The instance role is what lets the box call Bedrock and, if you deploy them, the other services. Arize and Braintrust are outside AWS, so the instance needs outbound HTTPS to `otlp.arize.com` and `api.braintrust.dev`.
 
 Do this in order:
 
@@ -24,14 +28,13 @@ Anthropic access is an account approval, not something EC2 turns on. Wait until 
 
 Trust `ec2.amazonaws.com`. For the first `cdk bootstrap` and deploy, attach `AdministratorAccess`, which is what the reference sample needs for bootstrap.
 
-After the stack is up, day-to-day eval only needs:
+After the instance is up, day-to-day eval (`LOAN_AGENTCORE_INVOKE=local`) needs:
 
 - `bedrock:InvokeModel`
-- `bedrock:ApplyGuardrail`
-- `bedrock-agentcore:InvokeAgentRuntime`
-- `ssm:GetParameter`
-- `secretsmanager:GetSecretValue`
+- `bedrock:ApplyGuardrail` (if a guardrail id is configured)
 - CloudWatch read
+
+`bedrock-agentcore:InvokeAgentRuntime` is only required when `LOAN_AGENTCORE_INVOKE=runtime`.
 
 Do not put access keys on the instance.
 
@@ -50,6 +53,7 @@ sudo dnf install -y python3.12 python3.12-pip git nodejs
 python3.12 -m pip install --user awscli
 sudo npm install -g aws-cdk
 aws sts get-caller-identity
+# Node is only for the CDK CLI. Specialist code is a Python zip; Docker is not required.
 ```
 
 The identity must be the instance role, and the region must be `us-east-1`.
@@ -64,6 +68,7 @@ Clone the `chai-testing` branch, create a virtualenv, and `pip install -r requir
 
 ```
 MODEL_PROVIDER=agentcore
+LOAN_AGENTCORE_INVOKE=local
 JUDGE_PROVIDER=bedrock
 AWS_REGION=us-east-1
 ARIZE_SPACE_ID=...
@@ -71,7 +76,7 @@ ARIZE_API_KEY=...
 BRAINTRUST_API_KEY=...
 ```
 
-Leave AWS key fields empty so boto3 uses the instance role.
+Leave AWS key fields empty so boto3 uses the instance role. With `LOAN_AGENTCORE_INVOKE=local` you can run steps 0–6 after the data files are on the box. CDK deploy is only required if you want hosted AgentCore Runtimes or Aurora/KB/Memory/Gateway.
 
 ## 8. Preflight (before deploy)
 
@@ -81,9 +86,13 @@ python scripts/check_aws_ready.py
 
 It must report the region, the instance role, granted Bedrock models, and a successful HTTPS check to Arize and Braintrust before any deploy.
 
-## 9. Bootstrap and deploy
+## 9. Optional: hosted AgentCore Runtimes (skip for EC2-local specialists)
 
-From `infra/`, run `cdk bootstrap aws://ACCOUNT/us-east-1` once per account and region. Then run `./deploy.sh`. That creates the network, Aurora, the document bucket, the Knowledge Base, DynamoDB, the citation Lambda, the Gateway, the Guardrail, AgentCore Memory, and the four specialist runtimes. CodeBuild builds the images. The first deploy is about 20–25 minutes. Aurora is the slow part.
+You do not need this for `LOAN_AGENTCORE_INVOKE=local`. Use it only when you want the specialists to run as hosted AgentCore Runtimes (`InvokeAgentRuntime`).
+
+From `infra/`, run `cdk bootstrap aws://ACCOUNT/us-east-1` once per account and region. Then run `./deploy.sh`. That creates the network, Aurora, the document bucket, the Knowledge Base, DynamoDB, the citation Lambda, the Gateway, the Guardrail, AgentCore Memory, and the four specialist runtimes (S3 zip, not ECR). Then set `LOAN_AGENTCORE_INVOKE=runtime` in `.env`.
+
+If an earlier attempt created `LoanAgentStack` with ECR, destroy that stack first (`cdk destroy LoanAgentStack` from `infra/`) so the runtime names `loan_pool_screening` and the others are free.
 
 ## 10. Seed
 
@@ -109,7 +118,7 @@ python step5_score_braintrust.py
 python step6_build_results.py
 ```
 
-Step 3 builds the Strands supervisor on this instance and invokes the four AgentCore agents. Steps 4 and 5 read the scores those traces receive in Arize and Braintrust.
+Step 3 builds the Strands supervisor on this instance and invokes the four AgentCore specialists (in-process by default, or `InvokeAgentRuntime` when `LOAN_AGENTCORE_INVOKE=runtime`). Steps 4 and 5 read the scores those traces receive in Arize and Braintrust.
 
 ## 13. Clean up
 
