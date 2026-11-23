@@ -3,6 +3,9 @@
 For every exact figure in each expected response, look for it in the real data (all tool outputs, computed straight
 from the 8 loans) or in the case's own question. A figure found nowhere means the answer key itself may be wrong,
 so a failure on that case is not the agent's fault.
+
+Cases come from scoring.cases.load(): agentic_evaluation_test_cases.xlsx plus extra_test_cases.json.
+ONLY_SENIOR_CASES=1 uses just the 60 spreadsheet rows.
 Usage:  python step2_check_answer_key.py
 """
 import json

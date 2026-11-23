@@ -3,10 +3,13 @@
 This writes an invoke log (case id, error, session id, trace ids). Arize and
 Braintrust score the traces those agents emit; this JSONL is not the grading source.
 
+Cases come from scoring.cases.load() (spreadsheet + extra_test_cases.json).
+
 Usage:  python step3_run_agents.py
         python step3_run_agents.py --limit 3
         python step3_run_agents.py --ids AV-G1-001 AV-G4-002
         python step3_run_agents.py --fresh
+        ONLY_SENIOR_CASES=1 python step3_run_agents.py
 Output: results/<provider>-<version>/agent_runs.jsonl
 """
 import argparse

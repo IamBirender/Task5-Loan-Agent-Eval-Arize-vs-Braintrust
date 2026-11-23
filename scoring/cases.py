@@ -1,5 +1,5 @@
 """Read the test cases: the senior's 60 cases (spreadsheet, column C holds each case as JSON) plus our own
-G9-G20 and G21-G22 extras. Set ONLY_SENIOR_CASES=1 to use just the 60."""
+extras in extra_test_cases.json. Set ONLY_SENIOR_CASES=1 to use just the 60."""
 import json
 import os
 from pathlib import Path
@@ -8,9 +8,8 @@ import openpyxl
 
 HERE = Path(__file__).resolve().parent.parent
 XLSX = HERE / "agentic_evaluation_test_cases.xlsx"
-EXTRA = HERE / "extra_test_cases_G9_G20.json"
-EXTRA_G21_G22 = HERE / "extra_test_cases_G21_G22.json"
-EXTRA_FILES = (EXTRA, EXTRA_G21_G22)
+EXTRA = HERE / "extra_test_cases.json"
+EXTRA_FILES = (EXTRA,)
 
 
 def _case(j: dict, row, title: str, source: str) -> dict:

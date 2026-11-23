@@ -1,12 +1,11 @@
 # Loan agent test run: Arize AX and Braintrust
 
-This folder runs **332 test cases** against a loan-diligence team modeled on
+This folder runs **2260 test cases** against a loan-diligence team modeled on
 [sample-ma-due-diligence-agentcore](https://github.com/aws-samples/sample-ma-due-diligence-agentcore):
-the senior's 60 cases in `agentic_evaluation_test_cases.xlsx` (gates G1–G8, G21–G22) plus 72 cases in
-`extra_test_cases_G9_G20.json` (six per gate G9–G20) plus 200 cases in
-`extra_test_cases_G21_G22.json` (100 per gate G21–G22). Existing AV-G21-001–006 and AV-G22-001–006
-stay in the spreadsheet. `gate_table` still adds a distinct summary row,
-`G20 rollup · derived from G1–G19`.
+the senior's 60 cases in `agentic_evaluation_test_cases.xlsx` (AV-G*-001–006) plus 2200 extras in
+`extra_test_cases.json` (100 unique prompts per gate G1–G22). `scoring.cases.load()` is what
+`step2_check_answer_key.py` through `step6_build_results.py` call, so that JSON is already on the
+run path. `gate_table` still adds a distinct summary row, `G20 rollup · derived from G1–G19`.
 
 Four **AgentCore** specialists (Pool Screening, Credit Performance, Cohort Comparison, Compliance
 Validation) plus a **Strands supervisor**. The supervisor always runs in the eval process on EC2.
@@ -46,8 +45,7 @@ The folder should look like this before you start:
 Task5 - Agentic Eval Arize vs Braintrust/
   README.md                    <- these instructions
   agentic_evaluation_test_cases.xlsx   <- the senior's 60 test cases
-  extra_test_cases_G9_G20.json         <- our 72 cases for gates G9-G20
-  extra_test_cases_G21_G22.json        <- our 200 cases for gates G21-G22 (100 each)
+  extra_test_cases.json                <- our 2200 extras (100 unique prompts per gate G1-G22)
   data/loans.duckdb  data/kb_passages.json   <- prepared data
   check_models.py  step1_get_data.py ... step6_build_results.py   <- run in this order
   loan_agents/  scoring/       <- the agents, tools and scorers
@@ -108,8 +106,8 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 |---|---|---|---|
 | 0 | `python check_models.py` | Sends "OK" to Claude (agents) and Amazon Nova Pro (judge). Must print **"Both models answered"** | 10 s |
 | 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**). Does not clone the AWS sample repo | 10 s |
-| 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data | 5 s |
-| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log | 20–25 min |
+| 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data (`xlsx` + `extra_test_cases.json`) | 5 s |
+| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. Full 2260-case suite is long; smoke with `--limit 3`, original 60 with `ONLY_SENIOR_CASES=1` | 20–25 min for 60 cases |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
 | 5 | `python step5_score_braintrust.py` | The same in Braintrust | 4 min |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
