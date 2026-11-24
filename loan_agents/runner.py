@@ -1,10 +1,15 @@
 """Run one test case. Supervisor is Strands here; specialists are AgentCore apps."""
 from __future__ import annotations
 
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable
 
 from . import agents, context, models, telemetry, tools
 from .aws_config import SPECIALISTS
+
+DEFAULT_WORKERS = 8
 
 
 def _case_payload(case: dict, session_id: str) -> dict:
@@ -21,10 +26,19 @@ def _case_payload(case: dict, session_id: str) -> dict:
     }
 
 
+def worker_count(requested: int | None = None) -> int:
+    if requested is not None:
+        return max(1, requested)
+    raw = os.getenv("LOAN_EVAL_WORKERS", str(DEFAULT_WORKERS)).strip() or str(DEFAULT_WORKERS)
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_WORKERS
+
+
 def run_case(case: dict) -> dict:
     tools.CALLS.clear()
     models.RUN_AGENTS.clear()
-    tools.FAULT = case.get("fault")
     session_id = context.pad_session_id(case.get("session_id"), case["id"])
     context.session_id.set(session_id)
     context.case_id.set(case["id"])
@@ -73,7 +87,6 @@ def run_case(case: dict) -> dict:
     except Exception as e:
         error = f"{type(e).__name__}: {e}"[:500]
     finally:
-        tools.FAULT = None
         context.fault.set(None)
         if token is not None:
             from opentelemetry import context as otel_context
@@ -98,3 +111,29 @@ def run_case(case: dict) -> dict:
     telemetry.set_span_case_attributes(span, payload, rec)
     span_cm.__exit__(None, None, None)
     return rec
+
+
+def run_cases(
+    cases: list[dict],
+    workers: int = 1,
+    on_result: Callable[[dict], None] | None = None,
+) -> list[dict]:
+    """Run cases, optionally in parallel. Local stand-ins stay in-process."""
+    workers = max(1, workers)
+    if workers == 1 or len(cases) <= 1:
+        recs = []
+        for case in cases:
+            rec = run_case(case)
+            recs.append(rec)
+            if on_result:
+                on_result(rec)
+        return recs
+    recs: list[dict] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run_case, case) for case in cases]
+        for fut in as_completed(futures):
+            rec = fut.result()
+            recs.append(rec)
+            if on_result:
+                on_result(rec)
+    return recs

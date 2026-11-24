@@ -5,10 +5,13 @@ Tables (read-only for the agents):
   loan_monthly  one row per month - performance (balance, delinquency, modification, ...)
 """
 import re
+import threading
 from pathlib import Path
 
 import duckdb
 import pandas as pd
+
+_TLS = threading.local()
 
 HERE = Path(__file__).resolve().parent.parent
 DATA = HERE / "data"
@@ -176,8 +179,18 @@ def write_cleaning_report(r: dict) -> None:
 
 
 def connect(read_only: bool = True) -> duckdb.DuckDBPyConnection:
-    """Agents always get a READ-ONLY connection, so no tool can change the tables."""
-    return duckdb.connect(str(DB_FILE), read_only=read_only)
+    """Agents always get a READ-ONLY connection, so no tool can change the tables.
+
+    DuckDB connections are not shared across threads. Parallel step-3 workers each
+    keep one read-only connection on the current thread.
+    """
+    if not read_only:
+        return duckdb.connect(str(DB_FILE), read_only=False)
+    con = getattr(_TLS, "ro", None)
+    if con is None:
+        con = duckdb.connect(str(DB_FILE), read_only=True)
+        _TLS.ro = con
+    return con
 
 
 def fingerprint() -> int:

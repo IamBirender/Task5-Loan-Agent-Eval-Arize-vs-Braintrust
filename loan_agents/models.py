@@ -12,6 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from . import context
+
 HERE = Path(__file__).resolve().parent.parent
 load_dotenv(HERE / ".env")
 load_dotenv(HERE.parent / ".env")
@@ -37,7 +39,7 @@ JUDGE_MODEL = os.getenv("JUDGE_MODEL") or {"bedrock": BEDROCK_DEFAULTS[1], "anth
     JUDGE_PROVIDER
 ) or OPENAI_STYLE.get(JUDGE_PROVIDER, ("", "", "", "qwen/qwen3.8-27b"))[3]
 
-RUN_AGENTS: list = []
+RUN_AGENTS = context.CtxList("loan_run_agents")
 PRICES = {
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-opus-5-5": (4.0, 20.0),

@@ -107,12 +107,12 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 0 | `python check_models.py` | Sends "OK" to Claude (agents) and Amazon Nova Pro (judge). Must print **"Both models answered"** | 10 s |
 | 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**). Does not clone the AWS sample repo | 10 s |
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data (`xlsx` + `extra_test_cases.json`) | 5 s |
-| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. Full 2260-case suite is long; smoke with `--limit 3`, original 60 with `ONLY_SENIOR_CASES=1` | 20–25 min for 60 cases |
+| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. **8 cases at a time** by default (`--workers 8` or `LOAN_EVAL_WORKERS`). Sequential: `--workers 1`. Smoke: `--limit 3`. Original 60: `ONLY_SENIOR_CASES=1` | ~3 min for 60 cases at 8 workers; full 2260 is still long |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
 | 5 | `python step5_score_braintrust.py` | The same in Braintrust | 4 min |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
 
-If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero.
+If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero. If Bedrock throttles, drop `--workers` (try 4). Raise it if quota allows.
 
 **Step 6: download the results before the sandbox ends**
 

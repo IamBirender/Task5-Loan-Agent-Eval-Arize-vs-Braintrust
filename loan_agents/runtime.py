@@ -44,12 +44,11 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     telemetry.setup_tracing()
     payload = _payload(event)
     prompt = payload.get("prompt") or ""
-    name = os.getenv("LOAN_AGENT_NAME") or payload.get("agent_name") or "pool_screening"
+    name = payload.get("agent_name") or os.getenv("LOAN_AGENT_NAME") or "pool_screening"
     session = context.pad_session_id(payload.get("session_id"), payload.get("case_id") or "")
     token = telemetry.attach_traceparent(payload.get("traceparent"))
     tools.CALLS.clear()
     models.RUN_AGENTS.clear()
-    tools.FAULT = payload.get("fault")
     context.fault.set(payload.get("fault"))
     context.session_id.set(session)
     context.case_id.set(str(payload.get("case_id") or ""))
@@ -74,7 +73,6 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"[:500]
     finally:
-        tools.FAULT = None
         context.fault.set(None)
         if token is not None:
             from opentelemetry import context as otel_context

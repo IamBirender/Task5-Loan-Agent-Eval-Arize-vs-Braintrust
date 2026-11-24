@@ -11,7 +11,7 @@ from strands import Agent, tool
 from . import aws_citation, aws_config, aws_kb, aws_memory, aws_sql, context, data, models
 from .sql_safety import SYSTEM_PROMPT_TEMPLATE, TextToSqlError, normalise_generated_sql, validate_sql
 
-CALLS: list[dict] = []
+CALLS = context.CtxList("loan_tool_calls")
 FAULT: str | None = None
 LOAN_ID = re.compile(r"\b1\d{11}\b|\b9{12}\b")
 PEER_FEATURES = ["borrower_credit_score", "ltv", "dti", "original_interest_rate", "original_upb"]

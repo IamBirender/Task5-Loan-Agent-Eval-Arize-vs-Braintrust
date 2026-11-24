@@ -128,7 +128,7 @@ def invoke_specialist(
     arn = runtime_arn or cfg.runtime_arns.get(name)
     mode = invoke_mode(arn)
     if mode == "local":
-        return _invoke_local(name, session, body)
+        return _invoke_local(name, session, {**body, "agent_name": name, "session_id": session})
     if not arn:
         raise ClientError(
             f"Runtime ARN for {name} is not configured. Set LOAN_AGENTCORE_INVOKE=local "
@@ -141,17 +141,10 @@ def _invoke_local(name: str, session: str, body: dict[str, Any]) -> dict[str, An
     # Imported lazily: runtime -> agents -> client.
     from . import runtime
 
-    previous = os.environ.get("LOAN_AGENT_NAME")
-    os.environ["LOAN_AGENT_NAME"] = name
     try:
         parsed = runtime.handle_event(body)
     except Exception as exc:
         raise ClientError(f"AgentCore specialist {name} failed on this host: {exc}") from exc
-    finally:
-        if previous is None:
-            os.environ.pop("LOAN_AGENT_NAME", None)
-        else:
-            os.environ["LOAN_AGENT_NAME"] = previous
     if not isinstance(parsed, dict):
         parsed = {"answer": str(parsed)}
     parsed.setdefault("session_id", session)

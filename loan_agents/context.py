@@ -2,6 +2,46 @@
 from __future__ import annotations
 
 import contextvars
+from collections.abc import Iterator
+from typing import Any
+
+
+class CtxList:
+    """Thread-safe list via contextvars so parallel cases do not mix tool calls or usage."""
+
+    def __init__(self, name: str) -> None:
+        self._var: contextvars.ContextVar[list[Any] | None] = contextvars.ContextVar(
+            name, default=None
+        )
+
+    def _items(self) -> list[Any]:
+        items = self._var.get()
+        if items is None:
+            items = []
+            self._var.set(items)
+        return items
+
+    def clear(self) -> None:
+        self._var.set([])
+
+    def append(self, item: Any) -> None:
+        self._items().append(item)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self._items())
+
+    def __len__(self) -> int:
+        return len(self._items())
+
+    def __getitem__(self, idx: int) -> Any:
+        return self._items()[idx]
+
+    def __bool__(self) -> bool:
+        return bool(self._items())
+
+    def __repr__(self) -> str:
+        return repr(self._items())
+
 
 session_id: contextvars.ContextVar[str] = contextvars.ContextVar("loan_session_id", default="")
 traceparent: contextvars.ContextVar[str] = contextvars.ContextVar("loan_traceparent", default="")

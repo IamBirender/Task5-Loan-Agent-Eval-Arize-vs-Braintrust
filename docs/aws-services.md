@@ -208,7 +208,7 @@ python scripts/check_aws_ready.py
 python check_models.py
 python step1_get_data.py
 python step2_check_answer_key.py
-python step3_run_agents.py
+python step3_run_agents.py --workers 8
 python step4_score_arize.py
 python step5_score_braintrust.py
 python step6_build_results.py
