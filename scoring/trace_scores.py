@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Any, Callable
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from loan_agents.telemetry import run_from_span_attrs
@@ -12,13 +12,27 @@ from loan_agents.telemetry import run_from_span_attrs
 from . import checks, evaluator_source, runs
 
 PROJECT = "loan-agents"
+BT_API = "https://api.braintrust.dev"
+CODE_SCORERS = (
+    ("tool_check", "eval_tool_check"),
+    ("facts_check", "eval_facts_check"),
+    ("policy_check", "eval_policy_check"),
+    ("verdict", "eval_verdict"),
+)
 
 
 def _http_json(url: str, headers: dict[str, str], payload: dict | None = None, timeout: int = 30) -> Any:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     req = Request(url, data=body, headers={"Content-Type": "application/json", **headers}, method="POST" if body else "GET")
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        raise RuntimeError(f"HTTP Error {exc.code}: {exc.reason}: {detail}") from exc
+    if not raw:
+        return {}
+    return json.loads(raw)
 
 
 def register_arize_evaluators(*, space_id: str | None = None, api_key: str | None = None, opener: Callable | None = None) -> dict[str, Any]:
@@ -51,32 +65,106 @@ def register_arize_evaluators(*, space_id: str | None = None, api_key: str | Non
 
 
 def register_braintrust_evaluators(*, api_key: str | None = None, opener: Callable | None = None) -> dict[str, Any]:
+    """Create loan-agents project scorers on the real Braintrust API.
+
+    There is no ``/v1/evaluators`` route. Scorers are ``POST /v1/function``
+    objects attached with ``POST /v1/project_score``.
+    """
     key = api_key or os.getenv("BRAINTRUST_API_KEY", "")
-    source = evaluator_source.braintrust_scorer_source()
+    sample = evaluator_source.braintrust_handler_source("eval_tool_check")
     if not key:
-        return {"registered": False, "reason": "missing Braintrust credentials", "source_chars": len(source)}
-    payload = {
-        "project_name": PROJECT,
-        "online": True,
-        "idle_timeout": 120,
-        "scores": [
-            {"name": "tool_check", "scope": "trace", "code": source, "entry": "eval_tool_check"},
-            {"name": "facts_check", "scope": "trace", "code": source, "entry": "eval_facts_check"},
-            {"name": "policy_check", "scope": "trace", "code": source, "entry": "eval_policy_check"},
-            {"name": "ai_judge", "scope": "trace", "type": "llm", "prompt": checks.JUDGE_PROMPT},
-            {"name": "verdict", "scope": "trace", "code": source, "entry": "eval_verdict"},
-        ],
-    }
+        return {"registered": False, "reason": "missing Braintrust credentials", "source_chars": len(sample)}
+    headers = {"Authorization": f"Bearer {key}"}
+    fetch = opener or _http_json
+    names = [name for name, _entry in CODE_SCORERS] + ["ai_judge"]
     try:
-        fetch = opener or _http_json
-        result = fetch(
-            "https://api.braintrust.dev/v1/evaluators",
-            {"Authorization": f"Bearer {key}"},
-            payload,
+        project = fetch(f"{BT_API}/v1/project", headers, {"name": PROJECT})
+        project_id = (project or {}).get("id")
+        if not project_id:
+            raise RuntimeError(f"Braintrust project {PROJECT!r} returned no id: {project!r}"[:400])
+        functions = []
+        for name, entry in CODE_SCORERS:
+            created = fetch(
+                f"{BT_API}/v1/function",
+                headers,
+                {
+                    "project_id": project_id,
+                    "name": name,
+                    "slug": f"loan-{name.replace('_', '-')}",
+                    "function_type": "scorer",
+                    "function_data": {
+                        "type": "code",
+                        "data": {
+                            "type": "inline",
+                            "runtime_context": {"runtime": "python", "version": "3.11"},
+                            "code": evaluator_source.braintrust_handler_source(entry),
+                        },
+                    },
+                },
+            )
+            functions.append({"name": name, "id": (created or {}).get("id"), "slug": f"loan-{name.replace('_', '-')}"})
+        llm_warning = ""
+        try:
+            llm = fetch(
+                f"{BT_API}/v1/function",
+                headers,
+                {
+                    "project_id": project_id,
+                    "name": "ai_judge",
+                    "slug": "loan-ai-judge",
+                    "function_type": "scorer",
+                    "function_data": {"type": "prompt"},
+                    "prompt_data": {
+                        "prompt": {
+                            "type": "chat",
+                            "messages": [
+                                {"role": "system", "content": checks.JUDGE_PROMPT},
+                                {
+                                    "role": "user",
+                                    "content": "Output: {{output}}\nExpected: {{expected}}\nMetadata: {{metadata}}",
+                                },
+                            ],
+                        },
+                        "options": {"model": "gpt-4o-mini"},
+                    },
+                },
+            )
+            functions.append({"name": "ai_judge", "id": (llm or {}).get("id"), "slug": "loan-ai-judge"})
+        except Exception as exc:
+            llm_warning = str(exc)[:240]
+        scorer_ids = [{"type": "function", "id": row["id"]} for row in functions if row.get("id")]
+        rule = fetch(
+            f"{BT_API}/v1/project_score",
+            headers,
+            {
+                "project_id": project_id,
+                "name": "Loan eval online scoring",
+                "description": "Score loan-agent traces with tool/facts/policy/verdict",
+                "score_type": "online",
+                "config": {
+                    "online": {
+                        "sampling_rate": 1,
+                        "scorers": scorer_ids,
+                        "apply_to_root_span": True,
+                    }
+                },
+            },
         )
-        return {"registered": True, "result": result, "source_chars": len(source)}
+        return {
+            "registered": True,
+            "project_id": project_id,
+            "functions": functions,
+            "online_score_id": (rule or {}).get("id"),
+            "source_chars": len(sample),
+            "llm_warning": llm_warning or None,
+        }
     except Exception as exc:
-        return {"registered": False, "reason": str(exc)[:400], "source_chars": len(source), "payload_names": [s["name"] for s in payload["scores"]]}
+        return {
+            "registered": False,
+            "reason": str(exc)[:400],
+            "source_chars": len(sample),
+            "payload_names": names,
+        }
 
 
 def spans_to_run(spans: list[dict[str, Any]]) -> dict[str, Any] | None:

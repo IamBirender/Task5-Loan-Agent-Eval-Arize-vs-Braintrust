@@ -22,7 +22,13 @@ SAVED = runs.load()
 assert SAVED, "No invoke log. Run step3_run_agents.py first."
 
 registration = trace_scores.register_braintrust_evaluators()
-print(f"Braintrust evaluators: registered={registration.get('registered')} ({registration.get('reason', 'ok')})")
+reason = registration.get("reason") or registration.get("llm_warning") or "ok"
+print(f"Braintrust evaluators: registered={registration.get('registered')} ({reason})")
+if registration.get("registered"):
+    print(
+        f"  project={registration.get('project_id')}  "
+        f"functions={[f.get('name') for f in registration.get('functions') or []]}"
+    )
 
 GRADES: dict = {}
 t0 = time.time()

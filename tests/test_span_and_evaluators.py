@@ -39,3 +39,34 @@ def test_register_evaluators_without_keys():
     assert arize["registered"] is False
     bt = trace_scores.register_braintrust_evaluators(api_key="")
     assert bt["registered"] is False
+
+
+def test_register_braintrust_uses_project_function_and_score_apis():
+    urls = []
+
+    def opener(url, headers, payload=None):
+        urls.append(url)
+        if url.endswith("/v1/project"):
+            assert payload == {"name": "loan-agents"}
+            return {"id": "proj-1", "name": "loan-agents"}
+        if url.endswith("/v1/function"):
+            assert payload["project_id"] == "proj-1"
+            assert payload["function_type"] == "scorer"
+            return {"id": f"fn-{payload['slug']}", "slug": payload["slug"]}
+        if url.endswith("/v1/project_score"):
+            assert payload["score_type"] == "online"
+            assert payload["config"]["online"]["apply_to_root_span"] is True
+            return {"id": "score-1"}
+        raise AssertionError(url)
+
+    result = trace_scores.register_braintrust_evaluators(api_key="bt-test", opener=opener)
+    assert result["registered"] is True
+    assert result["project_id"] == "proj-1"
+    assert "https://api.braintrust.dev/v1/evaluators" not in urls
+    assert urls[0].endswith("/v1/project")
+    assert any(u.endswith("/v1/function") for u in urls)
+    assert urls[-1].endswith("/v1/project_score")
+    src = evaluator_source.braintrust_handler_source("eval_tool_check")
+    assert "def handler(" in src
+    assert "from loan_agents" not in src
+    assert "def tool_check" in src

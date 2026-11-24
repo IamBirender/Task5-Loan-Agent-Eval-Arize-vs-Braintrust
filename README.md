@@ -192,7 +192,8 @@ The safety gate G4 allows **no** failure. The 0.8 mark and the safety rule come 
 | `check_models.py` fails on Bedrock | A model is not enabled in that account. Set another one in `.env`, e.g. `BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0` or `JUDGE_MODEL=us.amazon.nova-lite-v1:0` |
 | `check_models.py` fails on Anthropic | Check `ANTHROPIC_API_KEY`, and that the models `claude-opus-5-5` / `claude-sonnet-5-5` are available to your account (or set `CLAUDE_MODEL` / `JUDGE_MODEL`) |
 | Step 1 says "No data found" | `data/loans.duckdb` and `data/kb_passages.json` are missing from the `data/` folder |
-| Step 4 or 5 fails on keys | Check the Arize Space ID / API key and the Braintrust key in `.env` (no spaces around `=`) |
+| Step 4 or 5 fails on keys | Check the Arize Space ID / API key and the Braintrust key in `.env` (no spaces around `=`). Skip step 4 if you have no Arize keys yet; step 5 only needs `BRAINTRUST_API_KEY` |
+| Step 5 `registered=False` with HTTP 404 | Braintrust has no `/v1/evaluators` route. This branch registers scorers on `/v1/project`, `/v1/function`, and `/v1/project_score`. Pull latest `chai-testing` and re-run `python step5_score_braintrust.py` |
 | Step 3 skips every case | They are already done; use `python step3_run_agents.py --fresh` to start again |
 | Rate-limit errors (429) | Wait a minute and run the same step again; finished work is kept |
 
