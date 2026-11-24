@@ -1,4 +1,5 @@
 from scoring import braintrust_eval
+from scoring.cases import load
 
 
 class _Dataset:
@@ -89,6 +90,20 @@ def test_chunk_names():
     assert parts[0][0] == "T1-T50"
     assert parts[-1][0] == "T2451-T2500"
     assert [len(p) for _, p in parts] == [50] * 50
+
+
+def test_each_chunk_covers_all_gates():
+    cases = load()
+    parts = braintrust_eval.chunk_cases(cases)
+    assert len(parts) == 50
+    wanted = set(braintrust_eval.ALL_GATES)
+    seen = []
+    for name, part in parts:
+        assert len(part) == 50, name
+        gates = {c["gate_code"] for c in part}
+        assert gates == wanted, (name, sorted(gates, key=lambda g: int(g[1:])))
+        seen.extend(c["id"] for c in part)
+    assert sorted(seen) == sorted(c["id"] for c in cases)
 
 
 def test_dataset_name():

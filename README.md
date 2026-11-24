@@ -109,7 +109,7 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data (`xlsx` + `extra_test_cases.json`) | 5 s |
 | 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. **8 cases at a time** by default (`--workers 8` or `LOAN_EVAL_WORKERS`). Sequential: `--workers 1`. Smoke: `--limit 3`. Original 60: `ONLY_SENIOR_CASES=1` | ~3 min for 60 cases at 8 workers; full 2500 is still long |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
-| 5 | `python step5_score_braintrust.py` | Uploads **50 datasets and 50 experiments** in Braintrust project `loan-agents` (`T1-T50` … `T2451-T2500`, 50 cases each) and registers online scorers. Optional `--trace 3` for extra Logs | longer for 2500 cases |
+| 5 | `python step5_score_braintrust.py` | Uploads **50 datasets and 50 experiments** in Braintrust project `loan-agents` (`T1-T50` … `T2451-T2500`, 50 cases each, **every slice includes G1–G22**) and registers online scorers. Optional `--trace 3` for extra Logs | longer for 2500 cases |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
 
 If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero. If Bedrock throttles, drop `--workers` (try 4). Raise it if quota allows.
@@ -169,7 +169,7 @@ No model is called. Every case then fails, which is expected; you only check tha
 | `results/<...>/test_cases_with_results.xlsx` | The test-case spreadsheet with "Actual response" and "Score" filled in |
 | `results/<...>/arize_scores.json`, `braintrust_scores.json` | Every score and reason, per case |
 | **Arize AX** → Datasets → `loan-agent-test-cases-v1` → Experiment Analysis | The experiment and every case's scores. Traces → project `loan-agents` for the live agent traces |
-| **Braintrust** → project `loan-agents` → **Datasets** and **Experiments** | Dataset + experiment are created in **step 5** (`braintrust.Eval`). **Logs** are live OTEL traces from step 3 (only if `BRAINTRUST_API_KEY` was set then, and step 3 printed `otel: braintrust=True`) |
+| **Braintrust** → project `loan-agents` → **Datasets** and **Experiments** | 50 datasets/experiments `T1-T50` … `T2451-T2500` from step 5 (`braintrust.Eval`); each 50-case slice includes G1–G22. **Logs** are live OTEL traces from step 3 (only if `BRAINTRUST_API_KEY` was set then, and step 3 printed `otel: braintrust=True`) |
 
 ## 6. How a case is graded
 

@@ -38,7 +38,10 @@ published = braintrust_eval.publish(ORDERED, SAVED)
 GRADES = published["grades"]
 print(f"Braintrust datasets/experiments: {len(published.get('chunks') or [])} chunks of {braintrust_eval.CHUNK}")
 for chunk in published.get("chunks") or []:
-    print(f"  {chunk['dataset']}  n={chunk['n']}  {chunk.get('experiment_url') or chunk['experiment_name']}")
+    print(
+        f"  {chunk['dataset']}  n={chunk['n']}  gates={chunk.get('n_gates')}  "
+        f"{chunk.get('experiment_url') or chunk['experiment_name']}"
+    )
 
 if args.trace:
     telemetry.setup_tracing()
