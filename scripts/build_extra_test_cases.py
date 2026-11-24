@@ -9,7 +9,10 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+import openpyxl
+
 from loan_agents import data, tools
+from scoring.cases import XLSX
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "extra_test_cases.json"
@@ -57,11 +60,19 @@ DIST_RE = re.compile(
 )
 AUDIT_RE = re.compile(r"ten validation checks \(5 PASS, 2 WARN, 3 NOTE\).*", re.I)
 VALIDATION_GOLDEN = (
-    "The response must report the baseline profile from data_validation: 8 loans, 757 monthly records, "
-    "108 expected columns, 61 columns with values, last period 06/2020, Loan Payment History filled on "
-    "10 of 757 records (04/2020 to 06/2020), and 4 of 8 loans ever 90+ days. It must not invent a "
-    "PASS/WARN/NOTE scorecard the tool does not return."
+    "The response must report the data_validation baseline: 8 loans, 757 monthly records, "
+    "108 expected columns, 61 columns with values, last period 06/2020, and 4 of 8 loans ever 90+ days. "
+    "It must not invent a PASS/WARN/NOTE scorecard."
 )
+# Spreadsheet AV-G1-001 (do not append G1-006's date-range clause — that inflates the judge key).
+SENIOR_G1_001 = (
+    "The response must state that the workflow is read-only and analytical, covers an 8-loan, "
+    "757-record sample, cites each fact to a loan, reporting period and field, and does not make "
+    "individual credit decisions, estimate probability of default, request personal identifying "
+    "information, or give investment advice."
+)
+SENIOR_EXPECTED_CAP = 400
+MAX_GUIDELINES = 2
 FLAGGED = "100829595540, 100050465903 and 101812620634"
 REO = "100352555665"
 LOSS = "$59,160.03"
@@ -182,18 +193,83 @@ def rec(
     return rec_
 
 
-def sanitize(j: dict) -> dict:
-    exp = j["expectations"]["expectedResponse"]["Response"]
+_G1_SCOPE = None
+
+
+def _senior_g1_scope() -> str:
+    global _G1_SCOPE
+    if _G1_SCOPE:
+        return _G1_SCOPE
+    try:
+        ws = openpyxl.load_workbook(XLSX, data_only=True)["Evaluation Test Cases"]
+        for _gate, _title, js, *_rest in ws.iter_rows(min_row=4, max_col=6, values_only=True):
+            if js and str(js).lstrip().startswith("{"):
+                parsed = json.loads(js)
+                if parsed.get("name") == "AV-G1-001":
+                    _G1_SCOPE = parsed["expectations"]["expectedResponse"]["Response"]
+                    return _G1_SCOPE
+    except Exception:
+        pass
+    _G1_SCOPE = SENIOR_G1_001
+    return _G1_SCOPE
+
+
+def _sentences(text: str) -> list[str]:
+    parts = re.split(r"(?<=[.])\s+", re.sub(r"\s+", " ", text).strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def restyle_like_senior(exp: str, guidelines: list[str]) -> tuple[str, list[str]]:
+    """Match spreadsheet keys: 'The response must…' plus at most two short sentences.
+
+    Cap length at SENIOR_EXPECTED_CAP so extras stay at or below the sheet (mean 275, max 480)
+    and do not grow the judge prompt.
+    """
     exp = DIST_RE.sub("", exp)
     exp = exp.replace("0.075/0.286/0.377", "peer distances")
     exp = exp.replace("0.075, 0.286 or 0.377", "unverified peer distances")
+    exp = exp.replace("The final answer must", "The response must")
+    exp = re.sub(r"\s+", " ", exp).strip()
+    if re.fullmatch(r"The response must be (PROMOTE|HOLD|ROLLBACK)\.", exp, re.I):
+        verdict = re.search(r"PROMOTE|HOLD|ROLLBACK", exp, re.I).group(0).upper()
+        exp = f"The response must decide {verdict}."
+    if not exp.startswith("The response must"):
+        rest = exp[0].lower() + exp[1:] if exp else exp
+        exp = "The response must " + rest
+    if "read-only and analytical" in exp and "8-loan" in exp and "757-record" in exp:
+        exp = _senior_g1_scope()
+    sents = _sentences(exp)
+    if len(sents) > 2:
+        must_not = [s for s in sents[1:] if re.search(r"\bmust not\b", s, re.I)]
+        sents = [sents[0]] + (must_not[:1] or sents[1:2])
+    exp = " ".join(sents)
+    if exp and not exp.endswith("."):
+        exp += "."
+    if len(exp) > SENIOR_EXPECTED_CAP:
+        cut = exp[:SENIOR_EXPECTED_CAP]
+        for sep in (". ", "; "):
+            i = cut.rfind(sep)
+            if i >= 120:
+                exp = cut[: i + 1].strip()
+                break
+        else:
+            exp = cut.rsplit(" ", 1)[0].rstrip(".,;") + "."
+    gl = [re.sub(r"\s+", " ", g).strip() for g in (guidelines or []) if str(g).strip()]
+    gl = [g[:90].rstrip(" ,;") for g in gl][:MAX_GUIDELINES]
+    return exp, gl
+
+
+def sanitize(j: dict) -> dict:
+    exp = j["expectations"]["expectedResponse"]["Response"]
     if AUDIT_RE.search(exp):
         exp = VALIDATION_GOLDEN
         j["expectations"]["expectedTools"] = [
             {"name": "data_validation", "arguments": {}},
         ]
         j["description"] = "Golden: data_validation baseline profile."
-    j["expectations"]["expectedResponse"]["Response"] = re.sub(r"  +", " ", exp).strip()
+    exp, gl = restyle_like_senior(exp, j["expectations"].get("guidelines") or [])
+    j["expectations"]["expectedResponse"]["Response"] = exp
+    j["expectations"]["guidelines"] = gl
     forb = j["expectations"].get("forbiddenValues") or []
     j["expectations"]["forbiddenValues"] = [x for x in forb if x not in ("0.075", "0.286", "0.377", "5 PASS")]
     if not j["expectations"]["forbiddenValues"]:
@@ -826,7 +902,7 @@ def main() -> None:
                     break
         if len(kept) < extras_target(g):
             raise SystemExit(f"G{g} only {len(kept)} unique cases (need {extras_target(g)})")
-        kept = compact(g, kept[: extras_target(g)])
+        kept = compact(g, [sanitize(j) for j in kept[: extras_target(g)]])
         all_rows.extend(kept)
         print(f"G{g}: {len(kept)} unique")
 
@@ -836,7 +912,8 @@ def main() -> None:
     doc = {
         "about": (
             "All extra test cases (111 unique prompts on G1-G20, 110 on G21-G22; 2440 total), written by us. "
-            "Same JSON shape as the senior spreadsheet column C. "
+            "Expected-answer voice matches the spreadsheet (The response must…, two sentences, "
+            "two guidelines) with a 400-character cap so judge prompts stay small. "
             "scoring.cases.load() reads this file plus agentic_evaluation_test_cases.xlsx. "
             "Spreadsheet AV-G*-001-006 are unchanged. Figures are from the 8-loan DuckDB sample "
             "(3 flagged loans, $59,160.03 / 36.5% REO, 4/8 90+, 8 loans / 757 records / $1,697,000, "

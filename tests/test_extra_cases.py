@@ -3,7 +3,7 @@ import re
 from collections import Counter
 
 from scoring.cases import EXTRA, _case, load
-from scripts.build_extra_test_cases import GATES
+from scripts.build_extra_test_cases import GATES, SENIOR_EXPECTED_CAP, MAX_GUIDELINES
 
 ID_RE = re.compile(r"^AV-G(\d+)-X(\d{2,3})$")
 ALLOWED_METHODS = {"Deterministic", "LLM-as-judge", "Human review", "Metric"}
@@ -49,6 +49,20 @@ def test_extras_do_not_require_unreproducible_peer_distances():
     assert "0.286" not in blob
     assert "0.377" not in blob
     assert "5 PASS, 2 WARN, 3 NOTE" not in blob
+
+
+def test_extra_expected_matches_senior_format():
+    doc = json.loads(EXTRA.read_text(encoding="utf-8"))
+    lens = []
+    for j in doc["testCases"]:
+        exp = j["expectations"]["expectedResponse"]["Response"]
+        gl = j["expectations"].get("guidelines") or []
+        assert exp.startswith("The response must"), j["name"]
+        assert len(exp) <= SENIOR_EXPECTED_CAP, (j["name"], len(exp))
+        assert len(gl) <= MAX_GUIDELINES, (j["name"], gl)
+        lens.append(len(exp))
+    assert max(lens) <= SENIOR_EXPECTED_CAP
+    assert sum(lens) / len(lens) < 280
 
 
 def test_extra_metadata_matches_gate_and_ids_are_unique():
