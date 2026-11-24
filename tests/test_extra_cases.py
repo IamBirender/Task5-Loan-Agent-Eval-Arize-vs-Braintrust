@@ -13,15 +13,17 @@ META_KEYS = {"testId", "qualityGate", "phase", "evaluationMethod", "source", "fa
 def test_extra_json_hundred_unique_per_gate():
     doc = json.loads(EXTRA.read_text(encoding="utf-8"))
     loaded = [_case(j, None, j["description"], "added by us") for j in doc["testCases"]]
-    assert len(loaded) == 2200
+    assert len(loaded) == 2440
     counts = Counter(c["gate_code"] for c in loaded)
-    for gate in range(1, 23):
-        assert counts[f"G{gate}"] == 100, (gate, counts)
+    for gate in range(1, 21):
+        assert counts[f"G{gate}"] == 111, (gate, counts[f"G{gate}"])
+    assert counts["G21"] == 110
+    assert counts["G22"] == 110
     ids = [c["id"] for c in loaded]
     assert len(ids) == len(set(ids))
     assert "AV-G1-X01" in ids
-    assert "AV-G1-X100" in ids
-    assert "AV-G22-X100" in ids
+    assert "AV-G1-X111" in ids
+    assert "AV-G22-X110" in ids
     prompts = [(c["gate_code"], c["input"].strip().lower()) for c in loaded]
     assert len(prompts) == len(set(prompts))
 
@@ -30,14 +32,14 @@ def test_all_loaded_ids_unique_and_count():
     cases = load()
     ids = [c["id"] for c in cases]
     assert len(ids) == len(set(ids))
-    assert len(cases) == 2260
+    assert len(cases) == 2500
     counts = Counter(c["gate_code"] for c in cases)
     for gate in range(1, 9):
-        assert counts[f"G{gate}"] == 106, (gate, counts[f"G{gate}"])
+        assert counts[f"G{gate}"] == 117, (gate, counts[f"G{gate}"])
     for gate in range(9, 21):
-        assert counts[f"G{gate}"] == 100, (gate, counts[f"G{gate}"])
-    assert counts["G21"] == 106
-    assert counts["G22"] == 106
+        assert counts[f"G{gate}"] == 111, (gate, counts[f"G{gate}"])
+    assert counts["G21"] == 116
+    assert counts["G22"] == 116
 
 
 def test_extras_do_not_require_unreproducible_peer_distances():
@@ -68,8 +70,8 @@ def test_extra_metadata_matches_gate_and_ids_are_unique():
         assert meta["source"] == "added by us"
         assert set(meta) <= META_KEYS, (name, set(meta) - META_KEYS)
         assert "Fannie Mae" not in json.dumps(meta)
-    assert len(names) == len(set(names)) == 2200
-    assert len(test_ids) == len(set(test_ids)) == 2200
+    assert len(names) == len(set(names)) == 2440
+    assert len(test_ids) == len(set(test_ids)) == 2440
     loaded = load()
     loaded_ids = [c["id"] for c in loaded]
-    assert len(loaded_ids) == len(set(loaded_ids)) == 2260
+    assert len(loaded_ids) == len(set(loaded_ids)) == 2500

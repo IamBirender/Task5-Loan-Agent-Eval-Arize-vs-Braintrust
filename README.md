@@ -1,9 +1,9 @@
 # Loan agent test run: Arize AX and Braintrust
 
-This folder runs **2260 test cases** against a loan-diligence team modeled on
+This folder runs **2500 test cases** against a loan-diligence team modeled on
 [sample-ma-due-diligence-agentcore](https://github.com/aws-samples/sample-ma-due-diligence-agentcore):
-the senior's 60 cases in `agentic_evaluation_test_cases.xlsx` (AV-G*-001–006) plus 2200 extras in
-`extra_test_cases.json` (100 unique prompts per gate G1–G22). `scoring.cases.load()` is what
+the senior's 60 cases in `agentic_evaluation_test_cases.xlsx` (AV-G*-001–006) plus 2440 extras in
+`extra_test_cases.json` (111 unique prompts on G1–G20, 110 on G21–G22). `scoring.cases.load()` is what
 `step2_check_answer_key.py` through `step6_build_results.py` call, so that JSON is already on the
 run path. `gate_table` still adds a distinct summary row, `G20 rollup · derived from G1–G19`.
 
@@ -45,7 +45,7 @@ The folder should look like this before you start:
 Task5 - Agentic Eval Arize vs Braintrust/
   README.md                    <- these instructions
   agentic_evaluation_test_cases.xlsx   <- the senior's 60 test cases
-  extra_test_cases.json                <- our 2200 extras (100 unique prompts per gate G1-G22)
+  extra_test_cases.json                <- our 2440 extras (111 on G1-G20, 110 on G21-G22)
   data/loans.duckdb  data/kb_passages.json   <- prepared data
   check_models.py  step1_get_data.py ... step6_build_results.py   <- run in this order
   loan_agents/  scoring/       <- the agents, tools and scorers
@@ -107,9 +107,9 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 0 | `python check_models.py` | Sends "OK" to Claude (agents) and Amazon Nova Pro (judge). Must print **"Both models answered"** | 10 s |
 | 1 | `python step1_get_data.py` | Checks the 2 data files (**8 loans, 757 records, 61 columns**). Does not clone the AWS sample repo | 10 s |
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data (`xlsx` + `extra_test_cases.json`) | 5 s |
-| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. **8 cases at a time** by default (`--workers 8` or `LOAN_EVAL_WORKERS`). Sequential: `--workers 1`. Smoke: `--limit 3`. Original 60: `ONLY_SENIOR_CASES=1` | ~3 min for 60 cases at 8 workers; full 2260 is still long |
+| 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. **8 cases at a time** by default (`--workers 8` or `LOAN_EVAL_WORKERS`). Sequential: `--workers 1`. Smoke: `--limit 3`. Original 60: `ONLY_SENIOR_CASES=1` | ~3 min for 60 cases at 8 workers; full 2500 is still long |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
-| 5 | `python step5_score_braintrust.py` | Uploads dataset + experiment in Braintrust (project `loan-agents`) and registers online scorers. Optional `--trace 3` for extra Logs | 4 min for 60 cases |
+| 5 | `python step5_score_braintrust.py` | Uploads **50 datasets and 50 experiments** in Braintrust project `loan-agents` (`T1-T50` … `T2451-T2500`, 50 cases each) and registers online scorers. Optional `--trace 3` for extra Logs | longer for 2500 cases |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
 
 If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero. If Bedrock throttles, drop `--workers` (try 4). Raise it if quota allows.

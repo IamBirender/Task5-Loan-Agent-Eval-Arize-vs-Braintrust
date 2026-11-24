@@ -1,7 +1,7 @@
-"""Upload the test cases and one Braintrust experiment from the step-3 invoke log.
+"""Upload test cases as 50 Braintrust datasets and 50 experiments (T1-T50, T51-T100, ...).
 
 OTLP traces from step 3 land in project Logs. Datasets and Experiments in the UI
-come from this Eval() path (same as the original 13 Nov run).
+come from this Eval() path.
 """
 from __future__ import annotations
 
@@ -15,24 +15,40 @@ from loan_agents import models
 from scoring import runs
 
 PROJECT = "loan-agents"
+CHUNK = 50
+
+
+def chunk_name(start: int, end: int) -> str:
+    return f"T{start}-T{end}"
+
+
+def chunk_cases(cases: list[dict], size: int = CHUNK) -> list[tuple[str, list[dict]]]:
+    out = []
+    for i in range(0, len(cases), size):
+        part = cases[i : i + size]
+        start = i + 1
+        end = i + len(part)
+        out.append((chunk_name(start, end), part))
+    return out
 
 
 def dataset_name(n: int) -> str:
-    return "loan-agent-test-cases-v1" if n == 60 else f"loan-agent-test-cases-{n}"
+    """Legacy helper: a full suite of n cases is T1-Tn."""
+    return chunk_name(1, n)
 
 
-def publish(
-    all_cases: dict[str, dict],
+def _publish_one(
+    label: str,
+    part: list[dict],
+    all_by_id: dict[str, dict],
     saved: dict[str, dict],
-    *,
-    bt: Any | None = None,
+    grades: dict[str, dict],
+    sdk: Any,
+    max_concurrency: int,
     experiment_name: str | None = None,
-    max_concurrency: int = 1,
 ) -> dict[str, Any]:
-    sdk = bt or braintrust
-    name = dataset_name(len(all_cases))
-    dataset = sdk.init_dataset(project=PROJECT, name=name)
-    for case in all_cases.values():
+    dataset = sdk.init_dataset(project=PROJECT, name=label)
+    for case in part:
         dataset.insert(
             id=case["id"],
             input={"case_id": case["id"], "question": case["input"]},
@@ -43,16 +59,15 @@ def publish(
                 "method": case["method"],
                 "guidelines": case["guidelines"],
                 "expected_tools": case["expected_tools"],
+                "chunk": label,
             },
         )
     dataset.flush()
 
-    grades: dict[str, dict] = {}
-
     def cached(inp: dict) -> dict:
         cid = inp["case_id"]
         if cid not in grades:
-            grades[cid] = runs.grade(all_cases[cid], saved[cid])
+            grades[cid] = runs.grade(all_by_id[cid], saved[cid])
         return grades[cid]
 
     def task(inp, hooks=None):
@@ -99,26 +114,59 @@ def publish(
 
     def verdict(input, output, expected, **_):
         value = cached(input)["verdict"]
-        return None if value == "REVIEW" else Score(name="verdict", score=1.0 if value == "PASS" else 0.0, metadata={"verdict": value})
+        return None if value == "REVIEW" else Score(
+            name="verdict", score=1.0 if value == "PASS" else 0.0, metadata={"verdict": value}
+        )
 
-    exp_name = experiment_name or (
-        f"{models.AGENT_VERSION}-{models.PROVIDER}-{models.agent_model_name()}-{time.strftime('%Y%m%d-%H%M')}"
-    )
-    t0 = time.time()
     result = sdk.Eval(
         PROJECT,
         data=[row for row in dataset if row["input"]["case_id"] in saved],
         task=task,
         scores=[tool_check, facts_check, policy_check, ai_judge, verdict],
         max_concurrency=max_concurrency,
-        experiment_name=exp_name,
-        metadata={"agent_model": models.agent_model_name(), "judge_model": models.JUDGE_MODEL},
+        experiment_name=experiment_name or label,
+        metadata={
+            "agent_model": models.agent_model_name(),
+            "judge_model": models.JUDGE_MODEL,
+            "chunk": label,
+        },
     )
     summary = getattr(result, "summary", None)
     return {
-        "dataset": name,
-        "experiment_name": exp_name,
+        "dataset": label,
+        "experiment_name": experiment_name or label,
         "experiment_url": getattr(summary, "experiment_url", None),
+        "n": len(part),
+        "ids": [c["id"] for c in part],
+    }
+
+
+def publish(
+    all_cases: dict[str, dict] | list[dict],
+    saved: dict[str, dict],
+    *,
+    bt: Any | None = None,
+    experiment_name: str | None = None,
+    max_concurrency: int = 1,
+    chunk_size: int = CHUNK,
+) -> dict[str, Any]:
+    sdk = bt or braintrust
+    ordered = list(all_cases.values()) if isinstance(all_cases, dict) else list(all_cases)
+    all_by_id = {c["id"]: c for c in ordered}
+    grades: dict[str, dict] = {}
+    t0 = time.time()
+    parts = chunk_cases(ordered, chunk_size)
+    chunks_out = []
+    for label, part in parts:
+        exp = experiment_name if experiment_name and len(parts) == 1 else label
+        chunks_out.append(
+            _publish_one(label, part, all_by_id, saved, grades, sdk, max_concurrency, experiment_name=exp)
+        )
+    return {
+        "dataset": chunks_out[0]["dataset"] if len(chunks_out) == 1 else f"{len(chunks_out)} chunks",
+        "experiment_name": chunks_out[0]["experiment_name"] if len(chunks_out) == 1 else f"{len(chunks_out)} experiments",
+        "experiment_url": chunks_out[0].get("experiment_url") if len(chunks_out) == 1 else None,
+        "chunks": chunks_out,
         "grades": grades,
         "seconds": round(time.time() - t0, 1),
     }
