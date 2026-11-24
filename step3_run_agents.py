@@ -32,6 +32,11 @@ ap.add_argument("--fresh", action="store_true", help="delete earlier results and
 args = ap.parse_args()
 
 telemetry.setup_tracing()
+print(
+    f"otel: arize={telemetry.EXPORT['arize']} braintrust={telemetry.EXPORT['braintrust']}"
+    + (f"  arize_error={telemetry.EXPORT['arize_error']}" if telemetry.EXPORT["arize_error"] else "")
+    + (f"  braintrust_error={telemetry.EXPORT['braintrust_error']}" if telemetry.EXPORT["braintrust_error"] else "")
+)
 out = runs.runs_file()
 if args.fresh:
     out.unlink(missing_ok=True)
@@ -83,4 +88,5 @@ def _log(rec: dict) -> None:
 
 
 runner.run_cases(todo, workers=workers, on_result=_log)
+telemetry.flush()
 print(f"-> {out.relative_to(data.HERE)}")

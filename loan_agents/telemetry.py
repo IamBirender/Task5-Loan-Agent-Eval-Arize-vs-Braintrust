@@ -9,6 +9,7 @@ from . import aws_config
 
 _INSTALLED = False
 PROJECT = "loan-agents"
+EXPORT = {"arize": False, "braintrust": False, "arize_error": "", "braintrust_error": ""}
 
 
 def _secret_values() -> dict[str, str]:
@@ -67,6 +68,7 @@ def setup_tracing(force: bool = False) -> Any | None:
                 tracer_provider=provider,
                 span_processors=[StrandsAgentsToOpenInferenceProcessor()],
             )
+            EXPORT["arize"] = True
         except Exception:
             try:
                 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -81,8 +83,9 @@ def setup_tracing(force: bool = False) -> Any | None:
                     },
                 )
                 provider.add_span_processor(BatchSpanProcessor(exporter))
-            except Exception:
-                pass
+                EXPORT["arize"] = True
+            except Exception as exc:
+                EXPORT["arize_error"] = str(exc)[:240]
     if keys["BRAINTRUST_API_KEY"]:
         try:
             from braintrust.otel import BraintrustSpanProcessor
@@ -90,11 +93,26 @@ def setup_tracing(force: bool = False) -> Any | None:
             provider.add_span_processor(
                 BraintrustSpanProcessor(parent=f"project_name:{PROJECT}")
             )
-        except Exception:
-            pass
+            EXPORT["braintrust"] = True
+        except Exception as exc:
+            EXPORT["braintrust_error"] = str(exc)[:240]
     trace.set_tracer_provider(provider)
     _INSTALLED = True
     return provider
+
+
+def flush(timeout_millis: int = 30000) -> bool:
+    """Push buffered OTEL spans to Arize / Braintrust. Call at the end of step 3."""
+    try:
+        from opentelemetry import trace
+
+        provider = trace.get_tracer_provider()
+        fn = getattr(provider, "force_flush", None)
+        if not fn:
+            return False
+        return bool(fn(timeout_millis=timeout_millis))
+    except Exception:
+        return False
 
 
 def current_traceparent() -> str:

@@ -1,23 +1,26 @@
-"""STEP 5 - Register Braintrust online scorers and grade AWS AgentCore traces.
+"""STEP 5 - Upload the dataset, run a Braintrust experiment, register online scorers.
 
-Does not re-run agents. Scores come from traces exported during step 3
-(OTLP to api.braintrust.dev/otel). Idle timeout is long enough for the
-streaming metadata span to land.
+Does not re-run agents. Scores come from the step-3 invoke log (same 4 scorers as
+Arize). OTLP traces from step 3, if exported, show under project Logs.
 
 Usage:  python step5_score_braintrust.py
+        python step5_score_braintrust.py --trace 3
 Output: results/<provider>/braintrust_scores.json
 """
+import argparse
 import json
 import os
-import time
 
-from loan_agents import data, models
-from scoring import cases, runs, trace_scores
+from loan_agents import data, models, runner, telemetry
+from scoring import braintrust_eval, cases, runs, trace_scores
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--trace", type=int, default=0, help="also re-run this many cases live so traces show in Logs")
+args = ap.parse_args()
 
 assert os.getenv("BRAINTRUST_API_KEY"), "Add BRAINTRUST_API_KEY to .env (free account at braintrust.dev)."
 PROJECT = "loan-agents"
 ALL = {c["id"]: c for c in cases.load()}
-DATASET = "loan-agent-test-cases-v1" if len(ALL) == 60 else f"loan-agent-test-cases-{len(ALL)}"
 SAVED = runs.load()
 assert SAVED, "No invoke log. Run step3_run_agents.py first."
 
@@ -30,37 +33,34 @@ if registration.get("registered"):
         f"functions={[f.get('name') for f in registration.get('functions') or []]}"
     )
 
-GRADES: dict = {}
-t0 = time.time()
-for cid, case in ALL.items():
-    log = SAVED.get(cid)
-    if not log:
-        GRADES[cid] = dict(trace_scores.NOT_RUN)
-        continue
-    spans = trace_scores.fetch_braintrust_spans(cid, log.get("session_id") or "")
-    graded = trace_scores.grade_from_spans(case, spans)
-    if graded is None:
-        GRADES[cid] = dict(trace_scores.NOT_RUN)
-        if log.get("error"):
-            GRADES[cid]["ai_judge"] = {"score": 0.0, "reason": f"agent error: {log['error'][:200]}"}
-            GRADES[cid]["verdict"] = "FAIL"
-    else:
-        GRADES[cid] = graded
+published = braintrust_eval.publish(ALL, SAVED)
+GRADES = published["grades"]
+print(f"Braintrust dataset {published['dataset']}: {len(ALL)} cases")
+print(f"Braintrust experiment: {published.get('experiment_url') or published['experiment_name']}")
 
-seconds = round(time.time() - t0, 1)
+if args.trace:
+    telemetry.setup_tracing()
+    live = [c for c in ALL.values() if c["id"] in SAVED and not SAVED[c["id"]].get("error")][: args.trace]
+    for case in live:
+        rec = runner.run_case(case)
+        print(f"traced {case['id']} -> Braintrust project '{PROJECT}' logs ({rec['seconds']}s)")
+    telemetry.flush()
+
 table = runs.gate_table(GRADES, list(ALL.values()))
 out = runs.runs_file().parent / "braintrust_scores.json"
 out.write_text(json.dumps({
     "platform": "Braintrust",
     "model": models.agent_model_name(),
     "judge": models.JUDGE_MODEL,
-    "dataset": DATASET,
+    "dataset": published["dataset"],
     "project": PROJECT,
+    "experiment_url": published.get("experiment_url"),
     "evaluators": registration,
-    "grading_seconds": seconds,
+    "grading_seconds": published["seconds"],
     "gates": table,
     "cases": GRADES,
 }, indent=1, default=str), encoding="utf-8")
-for r in table:
-    print(f"{r['gate']:45} pass {r['pass']} fail {r['fail']} review {r['review']}  -> {r['gate_verdict']}")
-print(f"-> {out.relative_to(data.HERE)}   (graded in {seconds}s from Braintrust traces)")
+for row in table:
+    print(f"{row['gate']:45} pass {row['pass']} fail {row['fail']} review {row['review']}  -> {row['gate_verdict']}")
+print(f"-> {out.relative_to(data.HERE)}   (graded in {published['seconds']}s)  {published.get('experiment_url') or ''}")
+print("UI: Braintrust project loan-agents -> Datasets and Experiments. Logs = live OTEL traces from step 3.")

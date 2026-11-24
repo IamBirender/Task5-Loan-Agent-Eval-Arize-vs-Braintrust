@@ -109,7 +109,7 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 2 | `python step2_check_answer_key.py` | Checks every figure in the expected answers against the data (`xlsx` + `extra_test_cases.json`) | 5 s |
 | 3 | `python step3_run_agents.py` | Strands supervisor + four AgentCore specialists (on this host unless `LOAN_AGENTCORE_INVOKE=runtime`); writes an invoke log. **8 cases at a time** by default (`--workers 8` or `LOAN_EVAL_WORKERS`). Sequential: `--workers 1`. Smoke: `--limit 3`. Original 60: `ONLY_SENIOR_CASES=1` | ~3 min for 60 cases at 8 workers; full 2260 is still long |
 | 4 | `python step4_score_arize.py` | Registers Arize online evaluators and reads scores off the AgentCore / supervisor traces | 3 min |
-| 5 | `python step5_score_braintrust.py` | The same in Braintrust | 4 min |
+| 5 | `python step5_score_braintrust.py` | Uploads dataset + experiment in Braintrust (project `loan-agents`) and registers online scorers. Optional `--trace 3` for extra Logs | 4 min for 60 cases |
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
 
 If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero. If Bedrock throttles, drop `--workers` (try 4). Raise it if quota allows.
@@ -169,7 +169,7 @@ No model is called. Every case then fails, which is expected; you only check tha
 | `results/<...>/test_cases_with_results.xlsx` | The test-case spreadsheet with "Actual response" and "Score" filled in |
 | `results/<...>/arize_scores.json`, `braintrust_scores.json` | Every score and reason, per case |
 | **Arize AX** → Datasets → `loan-agent-test-cases-v1` → Experiment Analysis | The experiment and every case's scores. Traces → project `loan-agents` for the live agent traces |
-| **Braintrust** → project `loan-agents` → Experiments / Logs | The experiment and every case's scores. Logs for the live agent traces |
+| **Braintrust** → project `loan-agents` → **Datasets** and **Experiments** | Dataset + experiment are created in **step 5** (`braintrust.Eval`). **Logs** are live OTEL traces from step 3 (only if `BRAINTRUST_API_KEY` was set then, and step 3 printed `otel: braintrust=True`) |
 
 ## 6. How a case is graded
 
@@ -193,7 +193,7 @@ The safety gate G4 allows **no** failure. The 0.8 mark and the safety rule come 
 | `check_models.py` fails on Anthropic | Check `ANTHROPIC_API_KEY`, and that the models `claude-opus-5-5` / `claude-sonnet-5-5` are available to your account (or set `CLAUDE_MODEL` / `JUDGE_MODEL`) |
 | Step 1 says "No data found" | `data/loans.duckdb` and `data/kb_passages.json` are missing from the `data/` folder |
 | Step 4 or 5 fails on keys | Check the Arize Space ID / API key and the Braintrust key in `.env` (no spaces around `=`). Skip step 4 if you have no Arize keys yet; step 5 only needs `BRAINTRUST_API_KEY` |
-| Step 5 `registered=False` with HTTP 404 | Braintrust has no `/v1/evaluators` route. This branch registers scorers on `/v1/project`, `/v1/function`, and `/v1/project_score`. Pull latest `chai-testing` and re-run `python step5_score_braintrust.py` |
+| Step 5 `registered=True` but no dataset/experiment | `registered` only means scorers exist. Re-run `python step5_score_braintrust.py` so it uploads the dataset and `Eval()` experiment. Look under project **loan-agents**, not the org home. Logs need `BRAINTRUST_API_KEY` during step 3 (`otel: braintrust=True`) plus `--trace 3` if you want extra live traces |
 | Step 3 skips every case | They are already done; use `python step3_run_agents.py --fresh` to start again |
 | Rate-limit errors (429) | Wait a minute and run the same step again; finished work is kept |
 
