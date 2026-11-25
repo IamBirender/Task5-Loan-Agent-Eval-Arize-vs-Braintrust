@@ -25,8 +25,9 @@ all_cases = cases.load()
 names = list(platforms)
 L = [f"# Results - agent model `{models.agent_model_name()}`, judge `{models.JUDGE_MODEL}`", "",
      f"Cases answered: {sum(1 for c in all_cases if c['id'] in saved)} of {len(all_cases)} "
-     f"({sum(1 for c in all_cases if c['source'] != 'added by us')} from the senior's spreadsheet, "
-     f"{sum(1 for c in all_cases if c['source'] == 'added by us')} added by us for G9-G19). "
+     + (f"(case set {data.CASE_SET}, its own 8-loan pool). " if data.CASE_SET else
+        f"({sum(1 for c in all_cases if c['source'] != 'added by us')} from the senior's spreadsheet, "
+        f"{sum(1 for c in all_cases if c['source'] == 'added by us')} added by us for G9-G19). ") +
      f"Agent errors: {sum(1 for r in saved.values() if r['error'])}.", "",
      "## Quality gates", "", "| Gate | " + " | ".join(f"{n} (pass/fail/review) | {n} gate" for n in names) + " |",
      "|---|" + "---|---|" * len(names)]
@@ -70,7 +71,7 @@ for c in all_cases:
 # ---- filled spreadsheet ----
 wb = openpyxl.load_workbook(cases.XLSX)
 ws = wb["Evaluation Test Cases"]
-extra = wb.create_sheet("Added G9-G19 cases") if any(c["row"] is None for c in all_cases) else None
+extra = wb.create_sheet(f"Case set {data.CASE_SET}" if data.CASE_SET else "Added G9-G19 cases") if any(c["row"] is None for c in all_cases) else None
 if extra:
     extra.append(["Quality gate", "Test case", "Input", "Expected response", "Actual response", "Score"])
 for c in all_cases:

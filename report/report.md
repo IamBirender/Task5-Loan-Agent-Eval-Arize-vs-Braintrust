@@ -103,10 +103,41 @@ before the run.
 | Grading time, 60 cases (same judge) | 108–121 s | 164–186 s |
 | Comparing runs | Chart per metric across experiments; per-case labels | List of all scorer averages per experiment; improvements and regressions vs a baseline |
 | Agent traces | **Full tree** (manager → expert → tool) with time and tokens; **agent map**; response-time percentiles | Thread view with tool calls and tokens; **cost estimated automatically** ($0.098 for one traced run) |
-| Cost tracking | Needs a cost setup first ("No data") | Automatic |
+| Cost tracking | Built-in price list, but the Bedrock model name was not recognised ("No data"); after re-sending under the standard name: $0.053 per risk-screen run (section 6c) | Automatic |
 | Web pages | Fast | Some pages slow to load |
 
 **Recommendation.** Either platform can hold the test cases, run the experiments and keep the evidence. The PASS / REVIEW / FAIL decision stays in our own small piece of code in both. For **pre-merge testing (G1–G8)**, Braintrust was quicker to set up and its experiment comparison and cost view are very clear. For **live monitoring (G21–G22)**, Arize's trace tree, agent map and response-time view look stronger. We did not test the live monitors or alerts of either platform.
+
+### 6b. Licensing cost
+
+List prices from arize.com/pricing and braintrust.dev/pricing, checked on 19 November 2026.
+
+| | Arize AX | Braintrust |
+|---|---|---|
+| Free plan | $0 a month: 25,000 trace spans, 1 GB storage, data kept 15 days | $0 a month: 1 GB processed data, 10,000 scores, $10 model credits, data kept 14 days |
+| Pro plan (team) | $50 a month: 50,000 trace spans, 10 GB storage, 30 days, email support | $249 a month: 5 GB data, 50,000 scores, $100 model credits, 30 days, priority support |
+| Pro plan for 1 year | $600 | $2,988 |
+| Use above the plan | No public price; move up to Enterprise | $4 / $3 per extra GB, $2.50 / $1.50 per extra 1,000 scores (Free / Pro); $0.50 per GB a month to keep data longer |
+| Enterprise | Price on request: own servers, single sign-on, health-data rules (HIPAA) | Price on request: own servers or hosted, single sign-on, uptime promise |
+| Users, evaluations, experiments | Unlimited on every plan | Unlimited on every plan |
+| What is counted | Trace spans (agent steps) and storage | Processed data, scores, and model tokens when a model runs inside Braintrust |
+
+**Our cost:** both free plans covered all our runs, so the licence cost was **$0**. The AI model is paid separately to its provider: one full 73-case agent run used **719,503 tokens, about $3.14** at Claude Sonnet 4.6 list price ($0.043 per case; the AI judge is not included). Our judge ran on Amazon Bedrock, so Braintrust charged no model tokens.
+
+### 6c. Token cost per run in Arize AX
+
+Braintrust put a dollar cost on each trace by itself. Arize has its own price list too (Claude Sonnet 4.6: **$3 per million input tokens, $15 per million output tokens**, the same as the Amazon Bedrock list price), but it did not recognise the Bedrock model name `us.anthropic.claude-sonnet-4-6`, so our traces showed "Cost --". Arize prices a trace only when it arrives, so `step4c_arize_cost_view.py` re-sent exact copies of the last 3 Claude traces of 13 November (same steps, tokens and timings) under the standard name `claude-sonnet-4-6`, to the Arize project `loan-agents-claude-cost`. No AI model was called for this.
+
+| Arize AX cost per run | Input tokens | Output tokens | Total | Cost |
+|---|---|---|---|---|
+| Run the default risk screen on the pool. (5 Claude calls) | 9,457 | 1,636 | 11,093 | $0.0529 |
+| For loan 100352555665, report the credit scores (3 calls) | 5,519 | 436 | 5,955 | $0.0231 |
+| Explain what this agent may and may not do (1 call) | 1,772 | 733 | 2,505 | $0.0163 |
+| **3 runs together** | 16,748 | 2,805 | 19,553 | **$0.0923** |
+
+For comparison, Braintrust showed **$0.098** for the same risk-screen question in an earlier run (v1), so the cents are not directly comparable. A full 73-case run used 719,503 tokens, about **$3.14** (agents only; the AI judge is not included).
+
+![Arize AX: the risk-screen trace with cost per step, $0.052911 in total](screenshots/30-arize-cost-trace.jpg)
 
 ## 7. Limits and next steps
 
@@ -129,7 +160,7 @@ before the run.
 
 ![Braintrust trace with tokens and cost](screenshots/10-braintrust-trace-detail.jpg)
 
-All 28 screenshots are in `report/screenshots/`.
+All 31 screenshots are in `report/screenshots/`.
 
 ## Glossary
 

@@ -8,6 +8,8 @@ from . import checks
 
 def runs_file():
     folder = data.HERE / "results" / f"{models.PROVIDER}-{models.AGENT_VERSION}"   # e.g. results/bedrock-v3
+    if data.CASE_SET:   # each case set gets its own folder, e.g. results/bedrock-v3-set07
+        folder = folder.with_name(f"{folder.name}-{data.CASE_SET}")
     folder.mkdir(parents=True, exist_ok=True)
     return folder / "agent_runs.jsonl"
 

@@ -1,10 +1,11 @@
-"""STEP 3 - Run the 60 test cases through the loan agents ONCE and save every answer and tool call.
+"""STEP 3 - Run the test cases (the original 73, or one case set when CASE_SET is set) through the loan agents ONCE
+and save every answer and tool call.
 
 Both platforms (step 4 Arize AX, step 5 Braintrust) then grade these same saved answers, so any difference in
 results comes from the platform, not from the agent answering differently.
 The model is chosen in .env with MODEL_PROVIDER: ollama (local test), anthropic (final run), dryrun (free wiring test).
 
-Usage:  python step3_run_agents.py                 # all 60 cases (cases already finished are skipped)
+Usage:  python step3_run_agents.py                 # all cases (cases already finished are skipped)
         python step3_run_agents.py --limit 3        # quick smoke test
         python step3_run_agents.py --ids AV-G1-001 AV-G4-002
         python step3_run_agents.py --fresh          # start again from zero

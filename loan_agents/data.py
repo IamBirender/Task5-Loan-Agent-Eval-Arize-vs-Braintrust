@@ -4,15 +4,22 @@ Tables (read-only for the agents):
   loan_static   one row per loan  - facts fixed at origination (credit score, LTV, DTI, ...)
   loan_monthly  one row per month - performance (balance, delinquency, modification, ...)
 """
+import os
 import re
 from pathlib import Path
 
 import duckdb
 import pandas as pd
+from dotenv import load_dotenv
 
 HERE = Path(__file__).resolve().parent.parent
+load_dotenv(HERE / ".env")
 DATA = HERE / "data"
-DB_FILE = DATA / "loans.duckdb"
+# CASE_SET=set07 (in .env) switches the whole run to one of the 50 case sets: its own 8-loan pool and its own 73 cases.
+CASE_SET = os.getenv("CASE_SET", "").strip()
+SET_DIR = HERE / "case_sets" / CASE_SET if CASE_SET else None
+# CASE_SET=senior (2,440 cases as given) or senior_unique (exact copies removed): the senior's extra cases, written for the ORIGINAL 8-loan sample
+DB_FILE = SET_DIR / "loans.duckdb" if CASE_SET and not CASE_SET.startswith("senior") else DATA / "loans.duckdb"
 SAMPLE_CSV = DATA / "sf-loan-performance-data-sample.csv"
 
 # The 108 field names, in file order (from Fannie Mae's "Glossary and File Layout"). The file has no header row.
@@ -62,14 +69,15 @@ MONEY = ["current_actual_upb", "upb_at_the_time_of_removal", "total_principal_cu
          "associated_taxes_for_holding_property", "net_sales_proceeds", "current_interest_rate"]
 
 
-def read_sample() -> pd.DataFrame:
-    return pd.read_csv(SAMPLE_CSV, sep="|", header=None, names=COLS, dtype=str, keep_default_na=False)
+def read_sample(csv: Path = SAMPLE_CSV) -> pd.DataFrame:
+    return pd.read_csv(csv, sep="|", header=None, names=COLS, dtype=str, keep_default_na=False)
 
 
-def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Drop only the columns that are empty on every row (108 -> 61). Note the kept columns that carry little information."""
+def clean(df: pd.DataFrame, keep: list[str] | None = None) -> tuple[pd.DataFrame, dict]:
+    """Drop only the columns that are empty on every row (108 -> 61). Note the kept columns that carry little information.
+    keep: use this exact column list instead (the case sets keep the same 61 columns as the original sample)."""
     filled = {c: df[c][df[c] != ""] for c in df}
-    empty = [c for c in df if filled[c].empty]
+    empty = [c for c in df if c not in keep] if keep else [c for c in df if filled[c].empty]
     zero = [c for c in df if c not in empty and filled[c].str.fullmatch(r"0*\.?0*").all()]
     single = [c for c in df if c not in empty + zero and len(filled[c]) == len(df) and filled[c].nunique() == 1]
     report = {"kept": len(df.columns) - len(empty), "empty": len(empty), "empty_cols": empty, "zero_cols": zero,
@@ -77,11 +85,13 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return df.drop(columns=empty), report
 
 
-def build_db() -> dict:
-    """Clean the CSV and create data/loans.duckdb. Run by step 1 on your own computer (data preparation is local)."""
-    df, report = clean(read_sample())
-    DB_FILE.unlink(missing_ok=True)
-    con = duckdb.connect(str(DB_FILE))
+def build_db(csv: Path = SAMPLE_CSV, db: Path | None = None, keep: list[str] | None = None) -> dict:
+    """Clean the CSV and create data/loans.duckdb. Run by step 1 on your own computer (data preparation is local).
+    The case-set maker calls it with its own csv, db and the fixed list of 61 columns."""
+    db = db or DB_FILE
+    df, report = clean(read_sample(csv), keep)
+    db.unlink(missing_ok=True)
+    con = duckdb.connect(str(db))
     con.register("raw", df)
     con.execute(STATIC_SQL)
     con.execute(SCREEN_SQL)
@@ -92,8 +102,9 @@ def build_db() -> dict:
                 + " FROM raw ORDER BY loan_identifier, period_ym")
     con.execute(FEATURES_SQL)
     con.close()
-    report["features"] = [r[0] for r in duckdb.connect(str(DB_FILE), read_only=True).execute("DESCRIBE loan_features").fetchall()]
-    write_cleaning_report(report)
+    report["features"] = [r[0] for r in duckdb.connect(str(db), read_only=True).execute("DESCRIBE loan_features").fetchall()]
+    if keep is None:
+        write_cleaning_report(report)
     return report
 
 
@@ -173,6 +184,13 @@ def write_cleaning_report(r: dict) -> None:
              "- `default_risk_screen` (view): the configured screen with one flag per rule and `flag_count`.",
              "- `loan_features`: derived facts per loan: " + ", ".join(r["features"])]
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def pool_profile() -> dict:
+    """Size of the loan pool in use: loans, monthly records and last reporting period (MM/YYYY). The agent prompts quote these."""
+    n_loans, n_rows, last = connect().execute(
+        "SELECT count(DISTINCT loan_identifier), count(*), max(period_ym) FROM loan_monthly").fetchone()
+    return {"loans": n_loans, "records": n_rows, "last_period": f"{last[5:]}/{last[:4]}"}
 
 
 def connect(read_only: bool = True) -> duckdb.DuckDBPyConnection:

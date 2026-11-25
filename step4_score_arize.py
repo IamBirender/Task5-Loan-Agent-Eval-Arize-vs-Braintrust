@@ -32,7 +32,7 @@ client = ArizeClient(api_key=os.environ["ARIZE_API_KEY"])
 ALL = {c["id"]: c for c in cases.load()}
 SAVED = runs.load()
 assert SAVED, "No saved answers. Run step3_run_agents.py first."
-DATASET = "loan-agent-test-cases-v1" if len(ALL) == 60 else f"loan-agent-test-cases-{len(ALL)}"   # 73 = with our G9-G20 cases
+DATASET = cases.dataset_name()   # e.g. loan-agent-test-cases-73, or loan-agent-test-cases-set07 for a case set
 
 # ---- 1. Dataset (Arize reserves the field name 'id', so the case id goes in 'case_id') ----
 if not any(d.name == DATASET for d in client.datasets.list(name=DATASET, space=SPACE).datasets):
@@ -97,7 +97,7 @@ def verdict(output, dataset_row):
 subset = [cid for cid in ALL if cid in SAVED]
 t0 = time.time()
 experiment, df = client.experiments.run(
-    name=f"{models.AGENT_VERSION}-{models.PROVIDER}-{models.agent_model_name()}-{time.strftime('%Y%m%d-%H%M')}",
+    name=f"{models.AGENT_VERSION}{'-' + data.CASE_SET if data.CASE_SET else ''}-{models.PROVIDER}-{models.agent_model_name()}-{time.strftime('%Y%m%d-%H%M')}",
     dataset=DATASET, space=SPACE, task=task, evaluators=[tool_check, facts_check, policy_check, ai_judge, verdict], concurrency=1)
 seconds = round(time.time() - t0, 1)
 for cid in subset:  # make sure every saved case is graded even if Arize skipped one

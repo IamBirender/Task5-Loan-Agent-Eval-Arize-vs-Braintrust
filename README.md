@@ -12,11 +12,86 @@ workshop, Code Editor, us-east-1) on 13 November 2026, with Claude Sonnet 4.6 on
 Pro as the judge: twice with the 60 spreadsheet cases and once (final) with all 73 cases, 0 agent errors every time. A small
 5-case trial also ran on a Windows laptop with the free Groq models. Way 1 below repeats exactly what we did in the sandbox.
 
-**You only need this folder.** It already holds everything: the code, the test cases, the 2 prepared data files in `data/`,
-a copy of the AWS sample repo in `vendor/` (the code imports its SQL safety check and citation checker), our results and the
-report. If `vendor/` is ever missing, step 1 downloads it again from GitHub (needs git and internet). Nothing is deployed to AWS.
+**What is in git and what is not.** Git holds the code, every test case and our results. It does **not** hold Fannie
+Mae's data files (their terms do not allow re-sharing): the `data/` folder and the 50 loan pools are empty until you add them
+(section 0, step 2). The AWS sample repo in `vendor/` (the code imports its SQL safety check and citation checker) is
+downloaded by step 1 from GitHub. Nothing is deployed to AWS.
 
 Our own results, the report and the slides are in `report/` (see [Our results](#our-results-13-november-2026)).
+
+---
+
+## 0. Final test: two experiments (start here)
+
+| Experiment | Test cases | Loan data | Command |
+|---|---|---|---|
+| **1** | **3,650** = 50 case sets × 73 tests (`case_sets/set01` ... `set50`). Each set has its own 8 loans from Fannie Mae's 2007 Q4 quarter. | 50 small loan databases | `python run_experiment.py 1` |
+| **2** | **1,173** unique test cases from the senior (`case_sets/senior_unique`; his 2,440 had 1,267 exact copies) | the original 8-loan sample | `python run_experiment.py 2` |
+
+All expected answers were worked out by code from the data and checked against the raw Fannie Mae file by separate code:
+**0 problems in 9,026 checks** (`case_sets/verification_report.md`). A Sonnet trial on 24 random cases found no answer-key
+error (`case_sets/sonnet_trial/`). How the sets were made: `case_sets/README.md`.
+
+**Step 1 - Set up** (once). Python 3.12, then in this folder:
+```
+python -m venv .venv
+.venv\Scripts\activate                 (Mac/Linux/sandbox: source .venv/bin/activate)
+pip install -r requirements.txt
+copy .env.example .env                 (Mac/Linux/sandbox: cp .env.example .env)
+```
+Fill in `.env`: the model (`MODEL_PROVIDER`/`JUDGE_PROVIDER`, see Way 1 or Way 2 below) and the Arize AX and Braintrust
+keys. Do **not** put `CASE_SET` in `.env`: the runner sets it for every set.
+
+**Step 2 - Get the loan data** (not in git). Choose one:
+- **A. From the team (easiest):** ask for `Task5-private-data.zip` and unzip it into this folder. It puts
+  `data/loans.duckdb`, `data/kb_passages.json` and `case_sets/setNN/loans.duckdb` in place. Do not upload it anywhere public.
+- **B. Build it yourself:**
+  1. Download the 5 public Fannie Mae files listed by `python step1_get_data.py` into `data/`, then run it again: it builds
+     `data/loans.duckdb` and `data/kb_passages.json`.
+  2. Make a free account at datadynamics.fanniemae.com, open Download Data, Single-Family Loan Performance Data, and in the
+     quarterly table click **2007, Q4 "Acquisition and Performance"** (383 MB). Do **not** click "Primary 2000Q1-2026Q2" (about
+     60 GB). Save it as `data/2007Q4.zip`.
+  3. `python case_sets/make_pools.py data/2007Q4.zip` (about 15 minutes; it builds the 50 loan databases).
+
+**Step 3 - Check the data matches the test cases** (free, no AI model):
+```
+python case_sets/verify_cases.py data/2007Q4.zip          (needs the zip; with option A, skip this and rely on step 4)
+python run_experiment.py 1 --dry
+python run_experiment.py 2 --dry
+```
+`verify_cases.py` must end with `0 problems`. Each `--dry` run must show `ok` for steps 1, 2 and 3 of every set.
+If `verify_cases.py` reports problems after you built the data yourself, Fannie Mae has released a newer version of the
+quarter: run `python case_sets/make_cases.py` to rewrite the expected answers from your data, then `verify_cases.py` again.
+
+**Step 4 - Check the models answer** (a few cents): `python check_models.py` must print "Both models answered".
+
+**Step 5 - Run the experiments:**
+```
+python run_experiment.py 1
+python run_experiment.py 2
+```
+For each set the runner runs step 1 (data check), 2 (answer key check), 3 (agents answer), 4 (Arize AX grades),
+5 (Braintrust grades) and 6 (results). It stops at the first failure and tells you which log to read. **Run the same command
+again to continue**: finished sets are skipped and step 3 skips cases already answered. To run only some sets:
+`python run_experiment.py 1 --sets set01 set02`.
+
+**Step 6 - Results:**
+- one folder per set: `results/<provider>-<AGENT_VERSION>-set07/` (and `...-senior_unique/`) with `summary.md`, the filled
+  spreadsheet and the step logs;
+- one table per experiment: `results/experiment1_summary.md` and `results/experiment2_summary.md` (cases passed in Arize AX
+  and in Braintrust, failing gates and agent cost per set). Rebuild them any time with `python run_experiment.py 1 --summary`;
+- in Arize AX and Braintrust: one dataset per set (`loan-agent-test-cases-set07`, `...-senior_unique`) and one experiment per run.
+
+**Time and cost (estimate from our 73-case sandbox run: about 23 minutes and $3.45 per 73 cases, plus grading):**
+
+| | Cases | Agent time | Grading time | Agent cost |
+|---|---|---|---|---|
+| Experiment 1 | 3,650 | about 19 hours | about 7 hours | about $175 |
+| Experiment 2 | 1,173 | about 6 hours | about 2 hours | about $55 |
+
+In the AWS Builder Center sandbox (8 hours each) that is about 5 sandboxes: download `results/` before each one ends, put
+it back in the next one, and run the same command to continue. The sandbox terms ask you to use only data that Amazon Web
+Services provides, so check this before uploading Fannie Mae files there.
 
 ---
 
@@ -25,7 +100,7 @@ Our own results, the report and the slides are in `report/` (see [Our results](#
 | Item | Where to get it |
 |---|---|
 | This folder | The shared zip `Task5-Loan-Agent-Eval-Arize-vs-Braintrust.zip` (unzip it anywhere) |
-| **2 prepared data files** (already in `data/`) | `loans.duckdb` (Fannie Mae's public 8-loan sample, cleaned to 61 of 108 columns) and `kb_passages.json` (text of 5 Fannie Mae documents). **Do not publish them:** Fannie Mae's terms do not allow re-sharing |
+| **2 prepared data files** (not in git: see section 0, step 2) | `loans.duckdb` (Fannie Mae's public 8-loan sample, cleaned to 61 of 108 columns) and `kb_passages.json` (text of 5 Fannie Mae documents). **Do not publish them:** Fannie Mae's terms do not allow re-sharing |
 | Arize AX account | app.arize.com → Space settings → API keys: copy the **Space ID** and an **API key** |
 | Braintrust account | braintrust.dev → Settings → API keys → **+ API key** (copy it, it is shown only once) |
 | An AI model, either **Way 1** or **Way 2** | **Way 1 (free, what we used):** an AWS Builder Center sandbox, with Claude on Amazon Bedrock. **Way 2 (paid):** your own Anthropic API key from console.anthropic.com |
@@ -105,6 +180,17 @@ Be careful that the terminal command line, not the `.env` editor, has the cursor
 | 6 | `python step6_build_results.py` | Builds the summary and fills "Actual response" and "Score" in a copy of the spreadsheet | 5 s |
 
 If step 3 stops halfway, run it again: finished cases are skipped. `--fresh` starts from zero.
+
+**Arize cost view (optional, 2 minutes, free).** Braintrust shows the dollar cost of a trace by itself. Arize has a
+built-in price for `claude-sonnet-4-6` but does not recognise the Bedrock name `us.anthropic.claude-sonnet-4-6`, so the
+traces show "Cost --", and Arize prices a trace only when it arrives. Two ways:
+- **No new run (what we did):** `python step4c_arize_cost_view.py`. It copies the last 3 Claude traces from the Arize
+  project `loan-agents` to `loan-agents-claude-cost` under the standard name (same steps, tokens and timings). No AI
+  model is called. Arize → Traces → `loan-agents-claude-cost` then shows the cost per trace and per step
+  (our result: $0.0529 for "Run the default risk screen on the pool.", $0.0923 for all 3).
+- **With a new live run:** in Arize, Settings → Cost Configs → Add New, model name `us.anthropic.claude-sonnet-4-6`,
+  price per 1 million tokens: input 3, output 15, cache read 0.30, cache write 3.75. Wait 10 minutes, then run
+  `python step4b_arize_cost_traces.py` (3 new agent runs, uses model tokens).
 
 **Step 6: download the results before the sandbox ends**
 
@@ -193,12 +279,17 @@ The safety gate G4 allows **no** failure. The 0.8 mark and the safety rule come 
 
 ```
 check_models.py, step1_get_data.py ... step6_build_results.py   run in this order
+run_experiment.py              runs a whole experiment (all its case sets through steps 1-6), see section 0
+case_sets/    experiment 1 (set01-set50, 73 cases each) and experiment 2 (senior_unique); make_pools.py, make_cases.py,
+              verify_cases.py build and check them; README.md explains how
+step4c_arize_cost_view.py      optional: Arize cost view from the saved traces (no model calls)
+step4b_arize_cost_traces.py    optional: the same with 3 new live runs (after the cost config is set)
 loan_agents/  agents.py (manager + 4 experts), tools.py (8 tools), prompts/ (agent instructions),
               models.py (which AI model), data.py (database tables), runner.py (runs one case)
-scoring/      cases.py (reads the spreadsheet), checks.py (the 4 scorers), runs.py (saved answers + grading)
-data/         the 2 prepared data files (not in git)
+scoring/      cases.py (reads the spreadsheet, or one case set when CASE_SET is set), checks.py (the 4 scorers), runs.py (saved answers + grading)
+data/         Fannie Mae files and the 2 prepared data files (not in git: section 0, step 2)
 results/      our results: bedrock-v1/ (first run), bedrock-v2/ (second run), bedrock-v3/ (final run with G9-G20), groq-v2/ (small free trial). Each run writes to results/<provider>-<AGENT_VERSION>/, so old results are never mixed in
-report/       report.pdf, the slide deck, 22 screenshots, build_deck.js (rebuilds the slides)
+report/       report.pdf, the slide deck, 31 screenshots, build_deck.js (rebuilds the slides)
 ```
 
 The 5 agents follow the AWS sample's design: one Supervisor (manager) that calls 4 expert agents as tools. Taken from the repo unchanged:
@@ -208,7 +299,7 @@ Guardrail's rules are written into the Supervisor's instructions.
 
 ## Our results (13 November 2026)
 
-Full report: `report/report.pdf` · slides: `report/Task5-loan-agent-eval-deck.pptx` · screenshots: `report/screenshots/` (28).
+Full report: `report/report.pdf` · slides: `report/Task5-loan-agent-eval-deck.pptx` · screenshots: `report/screenshots/` (31).
 All 3 full runs were done in the AWS Builder Center sandbox with Claude Sonnet 4.6 (agents) and Amazon Nova Pro (judge).
 
 | | v1 (first run) | v2 (after review fixes) | **v3 (final, all gates G1–G22)** |

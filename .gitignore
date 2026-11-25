@@ -3,10 +3,21 @@
 # Python
 .venv/
 __pycache__/
-# Fannie Mae files: their terms do not allow re-sharing. Step 1 downloads them.
-data/loans.duckdb
-data/kb_passages.json
+# Fannie Mae files: their terms do not allow re-sharing. Everyone downloads them (step 1), or gets the prepared
+# files privately from the team (README, section 0). Only the empty folder marker is committed.
+data/*
+!data/.gitkeep
 # The AWS repo is cloned by step 1 at a pinned commit
 vendor/
 # Free wiring-test output
 results/dryrun*/
+# Senior review photos: slides are marked "Fannie Mae Confidential", never push them
+senior-review-*/
+# Case sets: Fannie Mae loan rows and the quarter zip may not be re-shared (test_cases.json and roles.csv are ours)
+data/*.zip
+case_sets/_loan_summary.csv
+case_sets/set*/sample.csv
+case_sets/set*/loans.duckdb
+case_sets/_verify_rows.pkl
+# run logs of the case-set scripts
+case_sets/*.log

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from strands import Agent, tool
 
-from . import models
+from . import data, models
 from .tools import ALL, CALLS
 
 PROMPTS = Path(__file__).resolve().parent / "prompts"
@@ -22,8 +22,15 @@ CASE_AGENT = {"Supervisor Agent": "supervisor", "Pool Screening Agent": "pool_sc
               "Compliance Validation Agent": "compliance_validation"}
 
 
+def _prompt(name: str) -> str:
+    """The agent's instructions, with the size of the loan pool in use (it differs per case set)."""
+    p = data.pool_profile()
+    return ((PROMPTS / f"{name}.txt").read_text(encoding="utf-8")
+            .replace("{{RECORDS}}", str(p["records"])).replace("{{LAST_PERIOD}}", p["last_period"]))
+
+
 def _specialist(name: str) -> Agent:
-    return models.track(Agent(name=name, model=models.agent_model(), system_prompt=(PROMPTS / f"{name}.txt").read_text(encoding="utf-8"),
+    return models.track(Agent(name=name, model=models.agent_model(), system_prompt=_prompt(name),
                  tools=[ALL[t] for t in SPECIALIST_TOOLS[name]], callback_handler=None))
 
 
@@ -44,5 +51,5 @@ def build(agent_name: str) -> Agent:
         return _specialist(agent_name)
     specialists = [_as_tool(n, _specialist(n)) for n in SPECIALIST_TOOLS]
     return models.track(Agent(name="supervisor", model=models.agent_model(),
-                 system_prompt=(PROMPTS / "supervisor.txt").read_text(encoding="utf-8"),
+                 system_prompt=_prompt("supervisor"),
                  tools=specialists + [ALL["kb_retrieve"]], callback_handler=None))

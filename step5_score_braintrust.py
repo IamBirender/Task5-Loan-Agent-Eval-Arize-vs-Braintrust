@@ -29,7 +29,7 @@ args = ap.parse_args()
 assert os.getenv("BRAINTRUST_API_KEY"), "Add BRAINTRUST_API_KEY to .env (free account at braintrust.dev)."
 PROJECT = "loan-agents"
 ALL = {c["id"]: c for c in cases.load()}
-DATASET = "loan-agent-test-cases-v1" if len(ALL) == 60 else f"loan-agent-test-cases-{len(ALL)}"   # 73 = with our G9-G20 cases
+DATASET = cases.dataset_name()   # e.g. loan-agent-test-cases-73, or loan-agent-test-cases-set07 for a case set
 SAVED = runs.load()
 assert SAVED, "No saved answers. Run step3_run_agents.py first."
 
@@ -97,7 +97,7 @@ def verdict(input, output, expected, **_):
 t0 = time.time()
 result = braintrust.Eval(PROJECT, data=[r for r in dataset if r["input"]["case_id"] in SAVED], task=task,
                          scores=[tool_check, facts_check, policy_check, ai_judge, verdict], max_concurrency=1,
-                         experiment_name=f"{models.AGENT_VERSION}-{models.PROVIDER}-{models.agent_model_name()}-{time.strftime('%Y%m%d-%H%M')}",
+                         experiment_name=f"{models.AGENT_VERSION}{'-' + data.CASE_SET if data.CASE_SET else ''}-{models.PROVIDER}-{models.agent_model_name()}-{time.strftime('%Y%m%d-%H%M')}",
                          metadata={"agent_model": models.agent_model_name(), "judge_model": models.JUDGE_MODEL})
 seconds = round(time.time() - t0, 1)
 

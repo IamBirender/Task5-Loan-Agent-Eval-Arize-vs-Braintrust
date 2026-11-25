@@ -49,7 +49,6 @@ pres.defineSlideMaster({
   margin: [0.5, 0.6, 0.6, 0.6],
   objects: [
     { placeholder: { options: { name: "title", type: "title", x: 0.6, y: 0.35, w: 12.1, h: 0.85, fontSize: 30, bold: true, color: C.text2, valign: "middle" }, text: "" } },
-    { text: { text: "Task 5 · Loan agent test run · 13 Nov 2026", options: { x: 0.6, y: 7.0, w: 8, h: 0.3, fontSize: 10, color: C.accent5 } } },
   ],
   slideNumber: { x: 12.3, y: 7.0, w: 0.5, h: 0.3, fontSize: 10, color: HEX.accent5 },
 });
@@ -226,11 +225,118 @@ const comp = [
   ["Grading 60 cases", "108–121 s", "164–186 s"],
   ["Comparing runs", "Chart per metric across experiments", "All scorer averages per run; improvements and regressions"],
   ["Agent traces", "Full tree + agent map + latency percentiles", "Thread view with tool calls and tokens"],
-  ["Cost view", "Needs cost setup first", "Estimated automatically ($0.098 per run)"],
+  ["Cost view", "Built-in prices, but the Bedrock model name was not recognised; after re-sending: $0.053 per risk-screen run", "Estimated automatically ($0.098 for one v1 run)"],
   ["Same verdicts (v2)", "59 of 60 identical", "59 of 60 identical"],
 ];
 s.addTable([head(["", "Arize AX", "Braintrust"]), ...comp.map(([a, b, c]) => [{ text: a, options: { bold: true } }, b, c])],
   { ...tableOpts([2.6, 4.75, 4.75], 13), y: 1.45, w: 12.1, rowH: 0.62 });
+
+// ---------- 8a. Who was right when the platforms disagreed ----------
+s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
+s.addText("When the platforms disagreed, which one was right?", { placeholder: "title" });
+const dis = [
+  ["v3 (final)\nAV-G7-003", "Original Home Value of loan 100829595540", "PASS\njudge 0.88", "FAIL\njudge 0.67",
+   "Braintrust", "Gave $218,750 as the home value. Did not state the \"lower of purchase price or appraisal\" rule, or that no appraisal is in the file"],
+  ["v2\nAV-G8-004", "Impact of a rule change on the flagged loans", "FAIL\njudge 0.60", "PASS\njudge 0.83",
+   "Arize AX", "Wrong before/after numbers: missed the 2 loans the new rule adds (flagged loans should go from 3 to 5)"],
+];
+s.addTable([head(["Run · case", "Question", "Arize AX", "Braintrust", "Right", "Why (checked against the expected answer)"]),
+  ...dis.map(([a, b, c, d, e, f]) => [{ text: a, options: { bold: true } }, b, c, d, { text: e, options: { bold: true, color: HEX.accent2 } }, f])],
+  { ...tableOpts([1.6, 2.4, 1.3, 1.3, 1.3, 4.2], 13), y: 1.45, w: 12.1, rowH: 1.0 });
+card(s, 0.6, 4.85, 12.1, 1.85, HEX.lt2, "dis-why");
+s.addText([
+  { text: "One right each: the difference is the AI judge, not the platform", options: { bold: true, fontSize: 16, color: HEX.dk2, breakLine: true } },
+  { text: "Both platforms used the same AI judge (Amazon Nova Pro, temperature 0) and the same code checks. No code check applied to these 2 cases, so the judge alone decided.", options: { bullet: true, breakLine: true } },
+  { text: "The judge wrote a slightly different checklist on each call (8 vs 6 requirements), so a borderline answer fell on different sides of the 0.8 pass mark.", options: { bullet: true, breakLine: true } },
+  { text: "Fix: let code checks decide wherever they can, send judge scores between 0.6 and 0.9 to a person, or run the judge 3 times and take the majority.", options: { bullet: true } },
+], { x: 0.8, y: 4.95, w: 11.7, h: 1.7, fontSize: 13, color: C.text1, valign: "top", paraSpaceAfter: 5, isTextBox: true, margin: 0 });
+
+// ---------- 8a2. Agent observability, side by side ----------
+s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
+s.addText("Agent observability: what each platform shows for one run", { placeholder: "title" });
+s.addText("Arize AX", { x: 0.6, y: 1.25, w: 5.95, h: 0.4, fontSize: 16, bold: true, color: C.text2, isTextBox: true, margin: 0 });
+s.addImage({ path: SHOT("30-arize-cost-trace.jpg"), x: 0.6, y: 1.7, w: 5.95, h: 2.55, objectName: "obs-arize-tree", altText: "Arize AX trace tree: supervisor, pool screening expert, tool calls, with time and tokens per step" });
+s.addImage({ path: SHOT("16b-arize-agent-map-crop.jpg"), x: 0.6, y: 4.35, w: 5.95, h: 1.18, objectName: "obs-arize-map", altText: "Arize AX agent map: start, agent loops, Claude calls and tools, end" });
+s.addText("Top: the step tree (manager → expert → tool) with time, tokens and cost on every step. Bottom: the agent map, a picture of every path the agent took (blue: agent loops, orange: Claude calls, yellow: tools).",
+  { x: 0.6, y: 5.6, w: 5.95, h: 0.95, fontSize: 11, color: C.accent5, isTextBox: true, margin: 0 });
+s.addText("Braintrust", { x: 6.75, y: 1.25, w: 5.95, h: 0.4, fontSize: 16, bold: true, color: C.text2, isTextBox: true, margin: 0 });
+s.addImage({ path: SHOT("10-braintrust-trace-detail.jpg"), x: 6.75, y: 1.7, w: 5.95, h: 2.55, objectName: "obs-bt-trace", altText: "Braintrust trace: conversation thread in the middle, span details with tokens and cost on the right" });
+s.addText("The same kind of run as a conversation thread: the question, tool calls and answer, with tokens, time and cost for the trace on the right. Steps can be opened as a list or a timeline. No agent map.",
+  { x: 6.75, y: 4.35, w: 5.95, h: 0.9, fontSize: 11, color: C.accent5, isTextBox: true, margin: 0 });
+card(s, 6.75, 5.3, 5.95, 1.3, HEX.lt2, "obs-take");
+s.addText([
+  { text: "In short: ", options: { bold: true, color: HEX.dk2 } },
+  { text: "Arize shows how the agents call each other (tree and map), which helps find where a multi-agent run went wrong. Braintrust reads like a chat and is quicker to scan one answer." },
+], { x: 6.9, y: 5.38, w: 5.65, h: 1.15, fontSize: 12, color: C.text1, valign: "middle", isTextBox: true, margin: 0 });
+
+// ---------- 8a3. How offline evaluation works ----------
+s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
+s.addText("How \"offline\" evaluation works (it still uses the internet)", { placeholder: "title" });
+s.addText("Offline = grading a saved test set before a release. Online = grading live user traffic after release. Both call AI models over the internet, unless a local model is used.",
+  { x: 0.6, y: 1.25, w: 12.1, h: 0.6, fontSize: 14, color: C.text1, isTextBox: true, margin: 0 });
+const flow = [
+  ["Saved test set", "73 test cases with the expected answers (a spreadsheet)", "No AI model", HEX.accent5],
+  ["Agent runs once", "Each case goes to the agents; answers and steps are saved", "Calls Claude online (Amazon Bedrock)", HEX.dk2],
+  ["Code checks", "Right tools used? Required figures present? No forbidden data?", "No AI model; runs on our computer", HEX.accent2],
+  ["AI judge", "Grades each answer against the expected answer, with a reason", "Calls Amazon Nova Pro online, with our own key", HEX.accent3],
+  ["Arize AX / Braintrust", "Stores cases, answers, scores and reasons; compares runs", "The platform; it calls no model for us", HEX.accent4],
+];
+flow.forEach(([t, d, m, col], i) => {
+  const x = 0.6 + i * 2.45;
+  card(s, x, 2.05, 2.25, 3.0, HEX.lt2, `flow-${i + 1}`);
+  numDot(s, x + 0.15, 2.2, i + 1, col);
+  s.addText(t, { x: x + 0.15, y: 2.85, w: 2.0, h: 0.65, fontSize: 15, bold: true, color: C.text2, valign: "top", isTextBox: true, margin: 0 });
+  s.addText(d, { x: x + 0.15, y: 3.5, w: 2.0, h: 1.0, fontSize: 12, color: C.text1, valign: "top", isTextBox: true, margin: 0 });
+  s.addText(m, { x: x + 0.15, y: 4.45, w: 2.0, h: 0.5, fontSize: 11, bold: true, color: HEX.accent2, valign: "top", isTextBox: true, margin: 0 });
+  if (i < flow.length - 1) s.addText("→", { x: x + 2.23, y: 3.25, w: 0.24, h: 0.5, fontSize: 18, bold: true, color: C.accent5, align: "center", isTextBox: true, margin: 0 });
+});
+card(s, 0.6, 5.3, 12.1, 1.3, HEX.lt2, "flow-note");
+s.addText([
+  { text: "Why the AI judge needs a model: ", options: { bold: true, color: HEX.dk2 } },
+  { text: "in both platforms, a judge is a model call. We ran it from our own code with our key, so both platforms graded with the same judge. To keep data inside, the judge can run on a local model (for example Ollama), but it needs a computer that can run one; our PC (8 GB memory, no graphics card) could not." },
+], { x: 0.8, y: 5.35, w: 11.7, h: 1.2, fontSize: 12, color: C.text1, valign: "middle", isTextBox: true, margin: 0 });
+
+// ---------- 8b. Licensing cost ----------
+s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
+s.addText("Licensing cost: both free plans covered our test", { placeholder: "title" });
+const lic = [
+  ["Free plan", "$0 a month: 25,000 trace spans, 1 GB storage, 15 days kept", "$0 a month: 1 GB data, 10,000 scores, $10 model credits, 14 days kept"],
+  ["Pro plan (team)", "$50 a month: 50,000 trace spans, 10 GB storage, 30 days kept, email support", "$249 a month: 5 GB data, 50,000 scores, $100 model credits, 30 days kept, priority support"],
+  ["Pro plan for 1 year", "$600", "$2,988"],
+  ["Use above the plan", "No public price; move up to Enterprise", "$3–$4 per GB, $1.50–$2.50 per 1,000 scores, $0.50 per GB a month to keep data longer"],
+  ["Enterprise", "Price on request: own servers, single sign-on, health-data rules (HIPAA)", "Price on request: own servers or hosted, single sign-on, uptime promise"],
+  ["Users · evaluations", "Unlimited on every plan", "Unlimited on every plan"],
+];
+s.addTable([head(["", "Arize AX", "Braintrust"]), ...lic.map(([a, b, c]) => [{ text: a, options: { bold: true } }, b, c])],
+  { ...tableOpts([2.5, 4.8, 4.8], 12), y: 1.35, w: 12.1, rowH: 0.6 });
+card(s, 0.6, 5.75, 12.1, 0.95, HEX.lt2, "lic-note");
+s.addText([
+  { text: "Our cost: licence $0 on both. ", options: { bold: true, color: HEX.dk2 } },
+  { text: "The AI model is paid separately to its provider: one full 73-case agent run used 719,503 tokens, about $3.14 at Claude Sonnet 4.6 list price ($0.043 per case; AI judge not included). " },
+  { text: "List prices from arize.com/pricing and braintrust.dev/pricing, 19 Nov 2026.", options: { italic: true, color: HEX.accent5 } },
+], { x: 0.8, y: 5.8, w: 11.7, h: 0.85, fontSize: 12, color: C.text1, valign: "middle", isTextBox: true, margin: 0 });
+s.addNotes("Arize bills by trace spans and storage. Braintrust bills by processed data and scores, plus token rates when a model runs inside Braintrust (playground or its AI proxy). Our AI judge ran on Amazon Bedrock, so Braintrust charged no tokens. Enterprise prices need a quote from each vendor.");
+
+// ---------- 8c. Token cost per run ----------
+s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
+s.addText("Token cost per run: both platforms show dollars", { placeholder: "title" });
+s.addImage({ path: SHOT("30-arize-cost-trace.jpg"), x: 0.6, y: 1.4, w: 5.95, h: 2.55, objectName: "arize-cost", altText: "Arize AX trace with cost per step and $0.052911 in the header" });
+s.addText("Arize AX: \"Run the default risk screen on the pool.\" 5 Claude calls, 11,093 tokens, $0.0529. Every step shows its tokens and dollars",
+  { x: 0.6, y: 4.0, w: 5.95, h: 0.6, fontSize: 11, color: C.accent5, isTextBox: true, margin: 0 });
+s.addImage({ path: SHOT("10-braintrust-trace-detail.jpg"), x: 6.75, y: 1.4, w: 5.95, h: 2.55, objectName: "bt-cost", altText: "Braintrust trace with 4.7K tokens and $0.098" });
+s.addText("Braintrust: the same question in an earlier run (v1), $0.098 estimated automatically. A different run, so the cents differ",
+  { x: 6.75, y: 4.0, w: 5.95, h: 0.6, fontSize: 11, color: C.accent5, isTextBox: true, margin: 0 });
+const tok = [
+  ["Default risk screen (5 calls)", "9,457", "1,636", "11,093", "$0.0529"],
+  ["One loan's credit scores (3 calls)", "5,519", "436", "5,955", "$0.0231"],
+  ["What the agent may do (1 call)", "1,772", "733", "2,505", "$0.0163"],
+  [{ text: "3 runs in Arize", options: { bold: true } }, "16,748", "2,805", "19,553", { text: "$0.0923", options: { bold: true } }],
+];
+s.addTable([head(["Arize AX cost per run", "Input tokens", "Output tokens", "Total", "Cost"]), ...tok],
+  { ...tableOpts([4.0, 1.6, 1.6, 1.4, 1.4], 12), y: 4.75, w: 10.0, rowH: 0.36 });
+s.addText("Arize prices Claude Sonnet 4.6 at $3 (input) and $15 (output) per million tokens, the same as the Bedrock list price. Full 73-case run: 719,503 tokens, about $3.14.",
+  { x: 10.8, y: 4.75, w: 1.9, h: 1.85, fontSize: 10, italic: true, color: C.accent5, valign: "top", isTextBox: true, margin: 0 });
+s.addNotes("Arize did not recognise the Bedrock model name us.anthropic.claude-sonnet-4-6, so the 13 Nov traces showed 'Cost --'. Arize prices a trace only when it arrives, so step4c_arize_cost_view.py re-sent exact copies of the last 3 Claude traces (same steps, tokens and timings) under the standard name claude-sonnet-4-6 to the project loan-agents-claude-cost. No AI model was called. Check: 1,761 input tokens x $3 per million = $0.005283, as Arize shows.");
 
 // ---------- 9. Screens ----------
 s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Platforms" });
